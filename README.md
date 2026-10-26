@@ -2,6 +2,8 @@
 
 为 **Neo75 Cu 原装三模 PCB** 和 **TOFU PAD 原装双模 PCB** 制作的网页键盘工作台。React、TypeScript、Vite；浏览器直接连接 USB 设备，无业务后端、账号系统或云端按键存储。
 
+[打开网页驱动](https://zackleo219.github.io/viapp/) · [下载 Windows 离线版](https://github.com/ZackLeo219/viapp/releases/latest/download/viapp-windows-x64.exe) · [所有下载](https://github.com/ZackLeo219/viapp/releases)
+
 ![VIAPP 设备中心](artifacts/device-center.png)
 
 ## 支持范围
