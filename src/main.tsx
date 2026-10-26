@@ -15,7 +15,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
     return this.state.failed ? (
       <main className="fatal-error">
         <h1>页面遇到了问题</h1>
-        <p>已保存到本地库的方案仍会保留。刷新页面后重新连接设备。</p>
+        <p>已保存到本地库的配置仍会保留。刷新页面后重新连接设备。</p>
         <button onClick={() => window.location.reload()}>重新打开工作台</button>
       </main>
     ) : (

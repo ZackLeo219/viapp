@@ -10,7 +10,7 @@ import {
   CircleHelp,
   Command,
   FileJson,
-  FolderHeart,
+  FolderCog,
   History,
   Info,
   Keyboard as KeyboardIcon,
@@ -37,7 +37,16 @@ import { KeyCapture } from './components/KeyCapture';
 import './components/DeviceHub.css';
 import { version } from '../package.json';
 import { Modal } from './components/Modal';
-import { useWorkspace, isDirty, hasUnsavedDrafts } from './state/workspace';
+import {
+  useWorkspace,
+  isDirty,
+  hasUnsavedDrafts,
+  isWorkspaceBusy,
+  isEditingBlocked,
+  isAutoSavePending,
+} from './state/workspace';
+import { watchAutoSave } from './state/autosave';
+import { transitionWorkspace } from './components/workspace-transition';
 import { watchDevices } from './state/discovery';
 import { actionsFor, bindingFor, labelFor, KEY_ACTIONS, type KeyAction } from './domain/keycodes';
 import { changesBetween, MODEL_NAMES, type ModelId } from './domain/types';
@@ -49,7 +58,7 @@ import { listProfiles, removeProfile, saveProfile } from './state/database';
 const navigation = [
   { id: 'keymap', title: '按键设置', icon: KeyboardIcon },
   { id: 'macros', title: '宏编辑器', icon: Command },
-  { id: 'profiles', title: '我的方案', icon: FolderHeart },
+  { id: 'profiles', title: '配置管理', icon: FolderCog },
   { id: 'test', title: '按键测试', icon: MonitorCheck },
 ] as const;
 function download(name: string, contents: string) {
@@ -101,12 +110,15 @@ export default function App() {
   const [help, setHelp] = useState(false);
   const [review, setReview] = useState(false);
   const [connectionDialog, setConnectionDialog] = useState<'demo' | null>(null);
+  useEffect(watchAutoSave, []);
   useEffect(watchDevices, []);
   const hub = s.page === 'devices';
   const inWorkspace = s.workspaceOpen;
   const unsaved = hasUnsavedDrafts(s);
   const dirty = isDirty(s);
-  const busy = s.operation !== 'idle';
+  const busy = isWorkspaceBusy(s);
+  const editingBlocked = isEditingBlocked(s);
+  const manualSave = !s.autoSave || s.requiresReview;
   const changes = useMemo(() => changesBetween(s.baseline, s.draft), [s.baseline, s.draft]);
   const macroChanges = s.draft.macros.filter(
     (m, i) => JSON.stringify(m) !== JSON.stringify(s.baseline.macros[i]),
@@ -163,7 +175,7 @@ export default function App() {
             aria-label="VIAPP 工作台"
             onClick={(e) => {
               e.preventDefault();
-              s.setPage('devices');
+              transitionWorkspace(() => s.setPage('devices'));
             }}
           >
             <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
@@ -176,7 +188,7 @@ export default function App() {
             <button
               className={`nav-item ${hub ? 'active' : ''}`}
               aria-label="设备中心"
-              onClick={() => s.setPage('devices')}
+              onClick={() => transitionWorkspace(() => s.setPage('devices'))}
               disabled={busy}
             >
               <LayoutGrid size={19} />
@@ -221,7 +233,7 @@ export default function App() {
               aria-label="VIAPP 设备中心"
               onClick={(e) => {
                 e.preventDefault();
-                s.setPage('devices');
+                transitionWorkspace(() => s.setPage('devices'));
               }}
             >
               <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
@@ -232,7 +244,10 @@ export default function App() {
           )}
           {inWorkspace && (
             <div className="breadcrumb">
-              <button onClick={() => s.setPage('devices')} disabled={busy}>
+              <button
+                onClick={() => transitionWorkspace(() => s.setPage('devices'))}
+                disabled={busy}
+              >
                 设备中心
               </button>
               {!hub && (
@@ -269,7 +284,7 @@ export default function App() {
             <div className="heading-actions">
               {inWorkspace && (
                 <Button
-                  onClick={() => s.setPage('devices')}
+                  onClick={() => transitionWorkspace(() => s.setPage('devices'))}
                   disabled={busy}
                   aria-label="返回设备中心"
                 >
@@ -307,7 +322,10 @@ export default function App() {
               <span>
                 <strong>演示模式</strong> 不会修改真实设备。
               </span>
-              <button onClick={() => s.setPage('devices')} disabled={busy}>
+              <button
+                onClick={() => transitionWorkspace(() => s.setPage('devices'))}
+                disabled={busy}
+              >
                 返回设备中心 <ArrowRight size={14} />
               </button>
             </div>
@@ -352,7 +370,7 @@ export default function App() {
         </main>
         {inWorkspace && (
           <div className="save-bar">
-            <div className="save-state">
+            <div className="save-state" role="status" aria-live="polite" aria-atomic="true">
               {busy ? (
                 <LoaderCircle className="spin" size={19} />
               ) : dirty ? (
@@ -362,35 +380,74 @@ export default function App() {
               )}
               <div>
                 <strong>
-                  {busy
-                    ? s.progress || '正在处理'
-                    : dirty
-                      ? `${changes.length} 个按键${macroChanges ? `、${macroChanges} 个宏` : ''}尚未保存`
-                      : s.connection === 'device'
-                        ? '与设备配置一致'
-                        : '无未保存修改'}
+                  {s.autoSaving || isAutoSavePending(s)
+                    ? '正在保存…'
+                    : busy
+                      ? s.progress || '正在处理'
+                      : s.autoSaveBlocked
+                        ? '保存失败，修改已保留'
+                        : s.requiresReview && dirty
+                          ? '配置已载入，待确认保存'
+                          : dirty
+                            ? `${changes.length} 个按键${macroChanges ? `、${macroChanges} 个宏` : ''}尚未保存`
+                            : s.connection === 'device'
+                              ? '已保存到键盘'
+                              : s.connection === 'demo'
+                                ? '演示配置已同步'
+                                : '设备未连接'}
                 </strong>
               </div>
             </div>
             <div className="save-actions">
-              <Button onClick={s.undo} disabled={busy || !s.history.length} aria-label="撤销修改">
+              <label className="autosave-toggle" title="改键后自动保存到键盘">
+                <input
+                  type="checkbox"
+                  checked={s.autoSave}
+                  onChange={(e) => s.setAutoSave(e.target.checked)}
+                  disabled={s.operation !== 'idle'}
+                />
+                自动保存
+              </label>
+              <Button
+                onClick={s.undo}
+                disabled={editingBlocked || !s.history.length}
+                aria-label="撤销修改"
+              >
                 <Undo2 size={17} />
               </Button>
-              <Button onClick={s.redo} disabled={busy || !s.future.length} aria-label="重做修改">
+              <Button
+                onClick={s.redo}
+                disabled={editingBlocked || !s.future.length}
+                aria-label="重做修改"
+              >
                 <Redo2 size={17} />
               </Button>
-              <Button onClick={s.resetDraft} disabled={busy || !dirty}>
-                <RotateCcw size={15} />
-                撤销全部
-              </Button>
-              <Button
-                primary
-                onClick={() => setReview(true)}
-                disabled={busy || !dirty || s.connection === 'offline' || s.draft.locked}
-              >
-                <Check size={17} />
-                {s.connection === 'demo' ? '保存演示配置' : '保存到键盘'}
-              </Button>
+              {manualSave && (
+                <Button className="reset-draft" onClick={s.resetDraft} disabled={busy || !dirty}>
+                  <RotateCcw size={15} />
+                  撤销全部
+                </Button>
+              )}
+              {s.autoSaveBlocked ? (
+                <Button
+                  onClick={() => void s.refresh()}
+                  disabled={busy || s.connection === 'offline'}
+                >
+                  <RotateCcw size={15} />
+                  重新读取
+                </Button>
+              ) : (
+                manualSave && (
+                  <Button
+                    primary
+                    onClick={() => setReview(true)}
+                    disabled={busy || !dirty || s.connection === 'offline' || s.draft.locked}
+                  >
+                    <Check size={17} />
+                    {s.connection === 'demo' ? '保存演示配置' : '保存到键盘'}
+                  </Button>
+                )
+              )}
             </div>
           </div>
         )}
@@ -522,7 +579,7 @@ export default function App() {
 
 function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void }) {
   const s = useWorkspace();
-  const busy = s.operation !== 'idle';
+  const busy = isWorkspaceBusy(s);
   const devices = Object.values(s.sessions).filter((session) => session.connection === 'device');
   const demos = Object.values(s.sessions).filter((session) => session.connection === 'demo');
   return (
@@ -534,11 +591,14 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
               <article className="connected-card" key={session.model}>
                 <button
                   className="connected-card-open"
-                  onClick={() => s.openDevice(session.model)}
+                  onClick={() => transitionWorkspace(() => s.openDevice(session.model))}
                   disabled={busy}
                   aria-label={`${session.draft.name} 开始配置`}
                 >
-                  <div className="connected-visual">
+                  <div
+                    className="connected-visual"
+                    style={{ viewTransitionName: `keyboard-${session.model}` }}
+                  >
                     <Keyboard snapshot={session.draft} layerId={session.layerId} miniature />
                   </div>
                   <div className="connected-card-bottom">
@@ -588,7 +648,11 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
           体验演示 <ArrowRight size={13} />
         </button>
         {demos.map((session) => (
-          <button key={session.model} onClick={() => s.openDevice(session.model)} disabled={busy}>
+          <button
+            key={session.model}
+            onClick={() => transitionWorkspace(() => s.openDevice(session.model))}
+            disabled={busy}
+          >
             继续 {session.draft.name} 演示 <ArrowRight size={13} />
           </button>
         ))}
@@ -645,7 +709,7 @@ function KeymapPage() {
           </div>
           <Button
             onClick={() => void s.refresh()}
-            disabled={s.operation !== 'idle' || s.connection === 'offline'}
+            disabled={isWorkspaceBusy(s) || s.connection === 'offline'}
             aria-label="重新读取设备"
           >
             <RotateCcw size={16} />
@@ -674,7 +738,7 @@ function KeymapPage() {
             ))}
           </div>
         </div>
-        <div className="keyboard-stage">
+        <div className="keyboard-stage" style={{ viewTransitionName: `keyboard-${s.model}` }}>
           <div className="stage-label">
             <span>{s.model === 'neo75cu' ? '75%' : '数字键盘'}</span>
             <span>{s.layerId === s.draft.layers[0].id ? '基础层' : '功能层'}</span>
@@ -734,7 +798,7 @@ function KeymapPage() {
               autoStart={autoCapture}
               actions={actions}
               onAssign={assign}
-              disabled={s.operation !== 'idle'}
+              disabled={isEditingBlocked(s)}
             />
             <label className="search-field">
               <Search size={16} />
@@ -768,7 +832,7 @@ function KeymapPage() {
               {filtered.map((a) => (
                 <button
                   key={a.id}
-                  disabled={!selected || s.operation !== 'idle'}
+                  disabled={!selected || isEditingBlocked(s)}
                   onClick={() => assign(a)}
                   title={a.description}
                   aria-label={`设为 ${a.description}`}
@@ -830,7 +894,7 @@ function MacrosPage() {
       <div className="panel-heading">
         <div>
           <h2>宏序列</h2>
-          <p>应用到草稿后，点击「保存到键盘」。</p>
+          {!s.autoSave && <p>应用到草稿后，点击「保存到键盘」。</p>}
         </div>
         <span className="capacity">
           {used} / {Math.max(0, s.draft.macroBufferSize - 1)} bytes
@@ -944,20 +1008,20 @@ function MacrosPage() {
             </p>
             <Button
               primary
-              disabled={s.operation !== 'idle' || !s.draft.macros.length}
+              disabled={isEditingBlocked(s) || !s.draft.macros.length}
               onClick={() => {
                 try {
                   const encoded = encodeMacro(steps, s.draft.protocolVersion);
                   const size = used - s.draft.macros[index].length + encoded.length;
                   if (size >= s.draft.macroBufferSize) throw new Error('宏总长度超出设备容量。');
                   s.editMacro(index, encoded);
-                  s.notify('宏已应用到草稿。');
+                  if (!s.autoSave || s.requiresReview) s.notify('宏已应用到草稿。');
                 } catch (e) {
                   s.report(e);
                 }
               }}
             >
-              应用到草稿 <Check size={16} />
+              {s.autoSave && !s.requiresReview ? '保存宏' : '应用到草稿'} <Check size={16} />
             </Button>
           </div>
         </div>
@@ -980,159 +1044,194 @@ function ProfilesPage() {
     void refresh();
   }, []);
   return (
-    <section className="panel profiles-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>本地方案库</h2>
-          <p>保存在当前浏览器，可导出备份。</p>
-        </div>
-        <Button onClick={() => file.current?.click()}>
-          <ArrowUpFromLine size={16} />
-          导入方案
-        </Button>
-        <input
-          ref={file}
-          className="visually-hidden"
-          type="file"
-          accept="application/json,.json"
-          aria-label="导入 JSON 方案"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = '';
-            if (!f) return;
-            if (f.size > 2_000_000) {
-              s.report('配置文件不能超过 2 MB。');
-              return;
-            }
-            void f
-              .text()
-              .then(parseProfile)
-              .then((p) => {
-                if (p.snapshot.model !== s.model)
-                  throw new Error(
-                    `此方案属于 ${MODEL_NAMES[p.snapshot.model]}，请在对应设备中导入。`,
-                  );
-                return saveProfile(p.name, p.snapshot);
-              })
-              .then(() => {
-                void refresh();
-                s.notify('方案已导入，尚未写入设备。');
-              })
-              .catch(s.report);
-          }}
-        />
-      </div>
-      {s.workspaceOpen && (
-        <form
-          className="save-profile-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void saveProfile(name, s.draft)
-              .then(() => {
-                setName('');
-                void refresh();
-                s.notify('方案已保存。');
-              })
-              .catch(s.report);
-          }}
-        >
-          <FolderHeart size={20} />
-          <input
-            aria-label="方案名称"
-            maxLength={80}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="方案名称"
-          />
-          <Button type="submit" primary disabled={!name.trim()}>
-            保存当前方案
-          </Button>
-        </form>
-      )}
-      <div className="profile-list">
-        {profiles.length === 0 ? (
-          <div className="empty-state">
-            <FolderHeart size={36} />
-            <h3>暂无方案</h3>
-            <p>保存的方案与自动备份会显示在这里。</p>
+    <div className="profiles-page">
+      <section className="panel onboard-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>{s.connection === 'demo' ? '演示配置' : '键盘配置'}</h2>
+            <p>{s.connection === 'demo' ? '模拟设备' : '保存在键盘上。'}</p>
           </div>
-        ) : (
-          profiles.map((p) => (
-            <article className="profile-row" key={p.id}>
-              <div className={`profile-icon ${p.kind}`}>
-                {p.kind === 'backup' ? <History size={22} /> : <FileJson size={22} />}
-              </div>
-              <div className="profile-info">
-                <h3>
-                  {p.name}
-                  <span className="subtle-tag">
-                    {p.kind === 'backup' ? '自动备份' : p.kind === 'draft' ? '草稿' : '方案'}
-                  </span>
-                </h3>
-                <p>
-                  {MODEL_NAMES[p.snapshot.model]} · {new Date(p.createdAt).toLocaleString('zh-CN')}{' '}
-                  {p.snapshot.identity.startsWith('DEMO:') ? '· 演示配置' : ''}
-                </p>
-              </div>
-              <div className="profile-actions">
-                <Button
-                  disabled={s.operation !== 'idle'}
-                  onClick={() => {
-                    try {
-                      s.loadProfile(p.snapshot);
-                      s.setPage('keymap');
-                    } catch (e) {
-                      s.report(e);
-                    }
-                  }}
-                >
-                  载入草稿
-                </Button>
-                <Button
-                  onClick={() =>
-                    download(
-                      `viapp-${p.snapshot.model}-${p.createdAt.slice(0, 10)}.json`,
-                      exportProfile(p),
-                    )
-                  }
-                  aria-label={`导出 ${p.name}`}
-                >
-                  <ArrowDownToLine size={16} />
-                </Button>
-                <Button onClick={() => setDeleting(p)} aria-label={`删除 ${p.name}`}>
-                  <Trash2 size={16} />
-                </Button>
-              </div>
-            </article>
-          ))
-        )}
-      </div>
-      <Modal
-        open={deleting !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
-        title="删除这份本地方案？"
-        description={deleting?.name ?? ''}
-      >
-        <p>只删除浏览器中的这份记录，不改变键盘配置。需要保留时可以先导出。</p>
-        <div className="modal-actions">
-          <Button onClick={() => setDeleting(null)}>保留</Button>
-          <Button
-            onClick={() => {
-              if (deleting)
-                void removeProfile(deleting.id)
-                  .then(() => {
-                    setDeleting(null);
-                    void refresh();
-                  })
-                  .catch(s.report);
+        </div>
+        <div className="onboard-config">
+          <div className="onboard-icon">
+            <KeyboardIcon size={24} />
+          </div>
+          <div>
+            <h3>{s.draft.name}</h3>
+            <p>
+              {s.baseline.layers.length} 个图层 · {s.baseline.keys.length} 键
+            </p>
+          </div>
+          <span className="onboard-status">
+            {s.connection === 'offline' ? (
+              '未连接'
+            ) : s.autoSaveBlocked ? (
+              '保存失败'
+            ) : isDirty(s) ? (
+              '有待保存修改'
+            ) : (
+              <>
+                <CheckCheck size={15} />
+                已同步
+              </>
+            )}
+          </span>
+        </div>
+      </section>
+      <section className="panel profiles-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>本地配置</h2>
+            <p>保存在此浏览器。</p>
+          </div>
+          <Button onClick={() => file.current?.click()}>
+            <ArrowUpFromLine size={16} />
+            导入配置
+          </Button>
+          <input
+            ref={file}
+            className="visually-hidden"
+            type="file"
+            accept="application/json,.json"
+            aria-label="导入配置文件"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (!f) return;
+              if (f.size > 2_000_000) {
+                s.report('配置文件不能超过 2 MB。');
+                return;
+              }
+              void f
+                .text()
+                .then(parseProfile)
+                .then((p) => {
+                  if (p.snapshot.model !== s.model)
+                    throw new Error(
+                      `此配置属于 ${MODEL_NAMES[p.snapshot.model]}，请在对应设备中导入。`,
+                    );
+                  return saveProfile(p.name, p.snapshot);
+                })
+                .then(() => {
+                  void refresh();
+                  s.notify('配置已导入。');
+                })
+                .catch(s.report);
+            }}
+          />
+        </div>
+        {s.workspaceOpen && (
+          <form
+            className="save-profile-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveProfile(name, s.draft)
+                .then(() => {
+                  setName('');
+                  void refresh();
+                  s.notify('已保存到此浏览器。');
+                })
+                .catch(s.report);
             }}
           >
-            删除方案
-          </Button>
+            <FolderCog size={20} />
+            <input
+              aria-label="配置名称"
+              maxLength={80}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="配置名称"
+            />
+            <Button type="submit" primary disabled={!name.trim()}>
+              保存为新配置
+            </Button>
+          </form>
+        )}
+        <div className="profile-list">
+          {profiles.length === 0 ? (
+            <div className="empty-state">
+              <FolderCog size={36} />
+              <h3>暂无本地配置</h3>
+            </div>
+          ) : (
+            profiles.map((p) => (
+              <article className="profile-row" key={p.id}>
+                <div className={`profile-icon ${p.kind}`}>
+                  {p.kind === 'backup' ? <History size={22} /> : <FileJson size={22} />}
+                </div>
+                <div className="profile-info">
+                  <h3>
+                    {p.name}
+                    <span className="subtle-tag">
+                      {p.kind === 'backup' ? '自动备份' : p.kind === 'draft' ? '草稿' : '配置'}
+                    </span>
+                  </h3>
+                  <p>
+                    {MODEL_NAMES[p.snapshot.model]} ·{' '}
+                    {new Date(p.createdAt).toLocaleString('zh-CN')}{' '}
+                    {p.snapshot.identity.startsWith('DEMO:') ? '· 演示配置' : ''}
+                  </p>
+                </div>
+                <div className="profile-actions">
+                  <Button
+                    disabled={isWorkspaceBusy(s)}
+                    onClick={() => {
+                      try {
+                        s.loadProfile(p.snapshot);
+                        s.setPage('keymap');
+                      } catch (e) {
+                        s.report(e);
+                      }
+                    }}
+                  >
+                    载入配置
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      download(
+                        `viapp-${p.snapshot.model}-${p.createdAt.slice(0, 10)}.json`,
+                        exportProfile(p),
+                      )
+                    }
+                    aria-label={`导出 ${p.name}`}
+                  >
+                    <ArrowDownToLine size={16} />
+                  </Button>
+                  <Button onClick={() => setDeleting(p)} aria-label={`删除 ${p.name}`}>
+                    <Trash2 size={16} />
+                  </Button>
+                </div>
+              </article>
+            ))
+          )}
         </div>
-      </Modal>
-    </section>
+        <Modal
+          open={deleting !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null);
+          }}
+          title="删除这份本地配置？"
+          description={deleting?.name ?? ''}
+        >
+          <p>只删除此浏览器中的副本。</p>
+          <div className="modal-actions">
+            <Button onClick={() => setDeleting(null)}>保留</Button>
+            <Button
+              onClick={() => {
+                if (deleting)
+                  void removeProfile(deleting.id)
+                    .then(() => {
+                      setDeleting(null);
+                      void refresh();
+                    })
+                    .catch(s.report);
+              }}
+            >
+              删除配置
+            </Button>
+          </div>
+        </Modal>
+      </section>
+    </div>
   );
 }

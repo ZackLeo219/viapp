@@ -1,5 +1,5 @@
 import { authorizedDevices, identifyHid, identifySerial } from '../protocols/discovery';
-import { useWorkspace } from './workspace';
+import { isWorkspaceBusy, useWorkspace } from './workspace';
 
 // Permission requests only happen in explicit click handlers. Scans use existing grants.
 export function watchDevices(): () => void {
@@ -8,7 +8,7 @@ export function watchDevices(): () => void {
     pending = false;
   let attempted = new WeakSet<object>();
   const pump = async () => {
-    if (stopped || running || useWorkspace.getState().operation !== 'idle') return;
+    if (stopped || running || isWorkspaceBusy(useWorkspace.getState())) return;
     running = true;
     try {
       while (pending && !stopped) {
@@ -17,7 +17,7 @@ export function watchDevices(): () => void {
         for (const access of devices) {
           const state = useWorkspace.getState();
           if (stopped) break;
-          if (state.operation !== 'idle') {
+          if (isWorkspaceBusy(state)) {
             pending = true;
             break;
           }
@@ -33,7 +33,7 @@ export function watchDevices(): () => void {
           attempted.add(handle);
           await state.connect(access.model, false, { access, automatic: true });
         }
-        if (useWorkspace.getState().operation !== 'idle') break;
+        if (isWorkspaceBusy(useWorkspace.getState())) break;
       }
     } finally {
       running = false;
@@ -61,7 +61,7 @@ export function watchDevices(): () => void {
     schedule();
   };
   const unsubscribe = useWorkspace.subscribe((state, previous) => {
-    if (state.operation === 'idle' && previous.operation !== 'idle' && pending) schedule();
+    if (!isWorkspaceBusy(state) && isWorkspaceBusy(previous) && pending) schedule();
   });
   navigator.hid?.addEventListener('connect', onConnect);
   navigator.serial?.addEventListener('connect', onConnect);

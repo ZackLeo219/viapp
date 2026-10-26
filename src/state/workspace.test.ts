@@ -29,7 +29,7 @@ class HardwareFixture extends DemoDriver {
 }
 const state = () => useWorkspace.getState();
 beforeEach(() => {
-  useWorkspace.setState(useWorkspace.getInitialState(), true);
+  useWorkspace.setState({ ...useWorkspace.getInitialState(), autoSave: false }, true);
   vi.clearAllMocks();
   mocks.backup.mockResolvedValue(undefined);
   mocks.authorized.mockResolvedValue([]);

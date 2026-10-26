@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { previewSnapshot, DemoDriver } from '../domain/demo';
 import {
   clone,
+  equalBinding,
   errorMessage,
   type Binding,
   type DeviceSnapshot,
@@ -25,8 +26,16 @@ interface DeviceSession {
   selectedIndex: number | null;
   history: DeviceSnapshot[];
   future: DeviceSnapshot[];
+  autoSaveRequested: boolean;
+  requiresReview: boolean;
+  autoSaveBlocked: boolean;
 }
 interface Workspace {
+  autoSave: boolean;
+  autoSaving: boolean;
+  autoSaveRequested: boolean;
+  requiresReview: boolean;
+  autoSaveBlocked: boolean;
   autoConnectBlocked: ModelId[];
   workspaceOpen: boolean;
   sessions: Partial<Record<ModelId, DeviceSession>>;
@@ -54,7 +63,8 @@ interface Workspace {
   authorize(transport: 'hid' | 'serial'): Promise<boolean>;
   disconnect(model?: ModelId): Promise<void>;
   refresh(): Promise<void>;
-  apply(): Promise<void>;
+  apply(options?: { automatic?: boolean }): Promise<void>;
+  setAutoSave(enabled: boolean): void;
   edit(index: number, binding: Binding): void;
   editMacro(index: number, bytes: number[]): void;
   selectKey(index: number | null): void;
@@ -78,18 +88,64 @@ export const isDirty = (s: Pick<Workspace, 'baseline' | 'draft'>) =>
 export const hasUnsavedDrafts = (s: Workspace) =>
   isDirty(s) ||
   Object.values(s.sessions).some((session) => session.model !== s.model && isDirty(session));
+export const isAutoSavePending = (s: Workspace) =>
+  s.autoSave &&
+  s.autoSaveRequested &&
+  !s.requiresReview &&
+  !s.autoSaveBlocked &&
+  s.connection !== 'offline' &&
+  !s.draft.locked &&
+  isDirty(s);
+export const isWorkspaceBusy = (s: Workspace) => s.operation !== 'idle' || isAutoSavePending(s);
+export const isEditingBlocked = (s: Workspace) => s.operation !== 'idle' && !s.autoSaving;
+function autoSavePreference() {
+  try {
+    return localStorage.getItem('viapp:auto-save') !== 'off';
+  } catch {
+    return true;
+  }
+}
 function rememberCurrent() {
-  const { model, baseline, draft, connection, layerId, selectedIndex, history, future, sessions } =
-    useWorkspace.getState();
+  const {
+    model,
+    baseline,
+    draft,
+    connection,
+    layerId,
+    selectedIndex,
+    history,
+    future,
+    sessions,
+    autoSaveRequested,
+    requiresReview,
+    autoSaveBlocked,
+  } = useWorkspace.getState();
   if (!sessions[model] && connection === 'offline') return;
   useWorkspace.setState({
     sessions: {
       ...sessions,
-      [model]: { model, baseline, draft, connection, layerId, selectedIndex, history, future },
+      [model]: {
+        model,
+        baseline,
+        draft,
+        connection,
+        layerId,
+        selectedIndex,
+        history,
+        future,
+        autoSaveRequested,
+        requiresReview,
+        autoSaveBlocked,
+      },
     },
   });
 }
 export const useWorkspace = create<Workspace>((set, get) => ({
+  autoSave: autoSavePreference(),
+  autoSaving: false,
+  autoSaveRequested: false,
+  requiresReview: false,
+  autoSaveBlocked: false,
   autoConnectBlocked: [],
   workspaceOpen: false,
   sessions: {},
@@ -108,7 +164,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   notice: null,
   progress: '',
   setPage: (page) => {
-    if (get().operation !== 'idle') return;
+    if (isWorkspaceBusy(get())) return;
     if (!get().workspaceOpen && page !== 'devices') return;
     if (page === 'devices') {
       rememberCurrent();
@@ -126,14 +182,14 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   },
   notify: (notice) => set({ notice, error: null }),
   openDevice(model) {
-    if (get().operation !== 'idle') return;
+    if (isWorkspaceBusy(get())) return;
     rememberCurrent();
     const session = get().sessions[model];
     if (!session) return;
     set({ ...session, workspaceOpen: true, page: 'keymap', error: null, notice: null });
   },
   async authorize(transport) {
-    if (get().operation !== 'idle') return false;
+    if (isWorkspaceBusy(get())) return false;
     set({ operation: 'connecting', error: null, notice: null, progress: '等待授权' });
     let access: DeviceAccess;
     try {
@@ -148,7 +204,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     return get().connect(access.model, false, { access });
   },
   async connect(model = get().model, demo = false, options = {}) {
-    if (get().operation !== 'idle') return false;
+    if (isWorkspaceBusy(get())) return false;
     if (options.access && options.access.model !== model) throw new Error('设备类型不匹配。');
     rememberCurrent();
     const previous = get().sessions[model];
@@ -196,6 +252,9 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         selectedIndex: null,
         history: [],
         future: [],
+        autoSaveRequested: false,
+        requiresReview: false,
+        autoSaveBlocked: false,
       };
       if (previous && isDirty(previous)) {
         await saveProfile(`${previous.draft.name} · 重连前草稿`, previous.draft, 'draft');
@@ -210,6 +269,9 @@ export const useWorkspace = create<Workspace>((set, get) => ({
                 firmwareUnsaved: snapshot.firmwareUnsaved,
               },
               connection: session.connection,
+              autoSaveRequested: false,
+              requiresReview: true,
+              autoSaveBlocked: false,
             };
         } catch {
           /* Different firmware or physical layout: retain the archived draft, use the new snapshot. */
@@ -270,7 +332,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     }
   },
   async disconnect(model = get().model) {
-    if (get().operation !== 'idle') return;
+    if (isWorkspaceBusy(get())) return;
     rememberCurrent();
     set({ operation: 'reading', progress: '关闭设备连接' });
     try {
@@ -292,7 +354,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   },
   async refresh() {
     const driver = drivers.get(get().model);
-    if (!driver || get().operation !== 'idle' || get().connection === 'offline') return;
+    if (!driver || isWorkspaceBusy(get()) || get().connection === 'offline') return;
     set({ operation: 'reading', error: null, progress: '读取设备配置' });
     try {
       if (isDirty(get()))
@@ -307,7 +369,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         selectedIndex: null,
         history: [],
         future: [],
-        notice: '已重新读取设备。原有未保存草稿会保留在方案库。',
+        autoSaveRequested: false,
+        requiresReview: false,
+        autoSaveBlocked: false,
+        notice: '已重新读取。未保存的修改已备份到本地配置。',
       });
       log('设备配置已重新读取。', 'success');
     } catch (e) {
@@ -316,79 +381,128 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       set({ operation: 'idle', progress: '' });
     }
   },
-  async apply() {
+  setAutoSave(autoSave) {
+    if (get().operation !== 'idle') return;
+    try {
+      localStorage.setItem('viapp:auto-save', autoSave ? 'on' : 'off');
+    } catch {
+      /* Optional preference. */
+    }
+    set({ autoSave, autoSaveRequested: autoSave && isDirty(get()) });
+  },
+  async apply({ automatic = false } = {}) {
     const driver = drivers.get(get().model);
     if (!driver || get().operation !== 'idle' || get().connection === 'offline') return;
-    set({ operation: 'saving', error: null, notice: null });
+    if (automatic && !isAutoSavePending(get())) return;
+    const { baseline, draft: desired } = get();
+    set({
+      operation: 'saving',
+      autoSaving: automatic,
+      autoSaveRequested: false,
+      error: null,
+      notice: null,
+    });
     try {
       const snapshot = await applyConfiguration(
         driver,
-        get().baseline,
-        get().draft,
+        baseline,
+        desired,
         (s) => saveProfile(`${s.name} · 写入前备份`, s, 'backup'),
         (progress) => set({ progress }),
       );
       const demo = get().connection === 'demo';
-      set({
+      set((s) => ({
         baseline: snapshot,
-        draft: clone(snapshot),
-        history: [],
-        future: [],
-        notice: demo ? '演示配置已更新，未操作真实键盘。' : '已保存到键盘，并通过读回校验。',
-      });
+        // Edits made during the write belong to the next transaction.
+        draft:
+          automatic && s.draft !== desired
+            ? { ...s.draft, locked: snapshot.locked, firmwareUnsaved: snapshot.firmwareUnsaved }
+            : clone(snapshot),
+        history: automatic ? s.history : [],
+        future: automatic ? s.future : [],
+        requiresReview: false,
+        autoSaveBlocked: false,
+        notice: automatic ? null : demo ? '演示配置已更新，未操作真实键盘。' : '已保存到键盘。',
+      }));
       log(demo ? '演示写入已通过模拟校验。' : '设备写入已通过读回校验。', 'success');
     } catch (e) {
+      set({ autoSaveBlocked: true, autoSaveRequested: false });
       get().report(
-        `${errorMessage(e)} 如已开始写入，设备可能已部分改变；请到方案库查看写入前备份，重新读取后再恢复。`,
+        `${errorMessage(e)} 修改已保留，请重新读取设备后检查；写入前备份可在配置管理中恢复。`,
       );
     } finally {
-      set({ operation: 'idle', progress: '' });
+      rememberCurrent();
+      set({ operation: 'idle', autoSaving: false, progress: '' });
     }
   },
   edit(index, binding) {
-    if (get().operation !== 'idle') return;
+    if (isEditingBlocked(get())) return;
     set((s) => {
       const draft = clone(s.draft),
         layer = draft.layers.find((l) => l.id === s.layerId);
       if (!layer || index < 0 || index >= layer.bindings.length) return s;
+      if (equalBinding(layer.bindings[index], binding)) return s;
       layer.bindings[index] = clone(binding);
-      return { draft, history: [...s.history.slice(-99), clone(s.draft)], future: [] };
+      return {
+        draft,
+        history: [...s.history.slice(-99), clone(s.draft)],
+        future: [],
+        autoSaveRequested: true,
+      };
     });
   },
   editMacro(index, bytes) {
-    if (get().operation !== 'idle' || index < 0 || index >= get().draft.macros.length) return;
+    if (isEditingBlocked(get()) || index < 0 || index >= get().draft.macros.length) return;
     set((s) => {
+      if (JSON.stringify(s.draft.macros[index]) === JSON.stringify(bytes)) return s;
       const draft = clone(s.draft);
       draft.macros[index] = [...bytes];
-      return { draft, history: [...s.history.slice(-99), clone(s.draft)], future: [] };
+      return {
+        draft,
+        history: [...s.history.slice(-99), clone(s.draft)],
+        future: [],
+        autoSaveRequested: true,
+      };
     });
   },
   undo() {
-    if (get().operation !== 'idle' || !get().history.length) return;
+    if (isEditingBlocked(get()) || !get().history.length) return;
     set((s) => ({
-      draft: s.history.at(-1)!,
+      draft: {
+        ...s.history.at(-1)!,
+        locked: s.baseline.locked,
+        firmwareUnsaved: s.baseline.firmwareUnsaved,
+      },
       history: s.history.slice(0, -1),
       future: [clone(s.draft), ...s.future],
+      autoSaveRequested: true,
     }));
   },
   redo() {
-    if (get().operation !== 'idle' || !get().future.length) return;
+    if (isEditingBlocked(get()) || !get().future.length) return;
     set((s) => ({
-      draft: s.future[0],
+      draft: {
+        ...s.future[0],
+        locked: s.baseline.locked,
+        firmwareUnsaved: s.baseline.firmwareUnsaved,
+      },
       future: s.future.slice(1),
       history: [...s.history, clone(s.draft)],
+      autoSaveRequested: true,
     }));
   },
   resetDraft() {
     if (get().operation !== 'idle') return;
     set((s) => ({
       draft: clone(s.baseline),
-      history: [...s.history.slice(-99), clone(s.draft)],
+      history: s.requiresReview ? [] : [...s.history.slice(-99), clone(s.draft)],
       future: [],
+      autoSaveRequested: false,
+      requiresReview: false,
     }));
   },
   loadProfile(snapshot) {
-    if (get().operation !== 'idle') return;
+    if (isWorkspaceBusy(get())) return;
     rememberCurrent();
     const target = get().sessions[snapshot.model];
     if (target && target.connection !== 'offline') get().openDevice(snapshot.model);
@@ -405,7 +519,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         history: [],
         future: [],
         page: 'keymap',
-        notice: '正在离线查看方案。连接对应键盘后可从方案库载入并保存。',
+        autoSaveRequested: false,
+        requiresReview: true,
+        autoSaveBlocked: false,
+        notice: '离线预览。连接键盘后可载入此配置。',
       });
       return;
     }
@@ -413,15 +530,18 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     const imported = clone(snapshot);
     imported.identity = current.identity;
     if (JSON.stringify(imported.keys) !== JSON.stringify(current.keys))
-      throw new Error('方案的物理配列与当前设备不同，请使用匹配的备份。');
+      throw new Error('配置的物理配列与当前设备不同，请使用匹配的备份。');
     sameConfiguration(current, imported); // validates model, protocol, layers and behavior identity.
     imported.locked = current.locked;
     imported.firmwareUnsaved = current.firmwareUnsaved;
+    const requiresReview = !sameConfiguration(get().baseline, imported);
     set((s) => ({
       draft: imported,
-      history: [...s.history.slice(-99), clone(s.draft)],
+      history: requiresReview ? [...s.history.slice(-99), clone(s.draft)] : [],
       future: [],
-      notice: '方案已载入草稿。检查差异后点击“保存到键盘”才会写入。',
+      autoSaveRequested: false,
+      requiresReview,
+      notice: requiresReview ? '配置已载入，请确认后保存到键盘。' : '配置与键盘一致。',
     }));
   },
 }));

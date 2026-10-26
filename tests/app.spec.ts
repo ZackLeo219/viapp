@@ -1,10 +1,134 @@
 import { test, expect, type Page } from '@playwright/test';
 
-async function demo(page: Page, model = 'Neo75 Cu') {
+for (const model of ['Neo75 Cu', 'TOFU PAD']) {
+  test(`${model} saves ordinary edits by default and undo updates the device`, async ({ page }) => {
+    await demo(page, model, true);
+    await expect(page.getByRole('checkbox', { name: '自动保存', exact: true })).toBeChecked();
+    const key = page
+      .getByRole('group', { name: `${model} 基础层可视化键盘` })
+      .locator('[data-key-index="0"]');
+    const before = await key.getAttribute('aria-label');
+    await key.click();
+    await page.keyboard.press('a');
+    await expect(key).toHaveAccessibleName(/^A，/);
+    await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: '撤销修改', exact: true }).click();
+    await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+    await expect(key).toHaveAccessibleName(before!);
+    await page.getByRole('button', { name: '重做修改', exact: true }).click();
+    await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+    await page.getByRole('button', { name: '重新读取设备', exact: true }).click();
+    await expect(key).toHaveAccessibleName(/^A，/);
+    await page.getByRole('button', { name: '配置管理', exact: true }).click();
+    await expect(page.locator('.profile-row')).toHaveCount(3);
+  });
+}
+
+test('restoring a local backup requires confirmation even with automatic saving enabled', async ({
+  page,
+}) => {
+  await demo(page, 'Neo75 Cu', true);
+  await remapFirstKey(page);
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '本地配置', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '载入配置', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('配置已载入，待确认保存');
+  await page.waitForTimeout(700);
+  await expect(page.locator('.save-state')).toHaveText('配置已载入，待确认保存');
+  await expect(page.getByRole('checkbox', { name: '自动保存', exact: true })).toBeChecked();
+  await page.getByRole('button', { name: '保存演示配置', exact: true }).click();
+  await page.getByTestId('confirm-save').click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await page.getByRole('button', { name: '重新读取设备', exact: true }).click();
+  await expect(page.locator('[data-key-index="0"]')).toHaveAccessibleName(/^Esc，/);
+});
+
+for (const mode of ['native', 'reduced', 'unsupported'] as const) {
+  test(`device workspace transition navigates correctly with ${mode} motion support`, async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await mockConnectedKeyboard(page);
+    await page.emulateMedia({ reducedMotion: mode === 'reduced' ? 'reduce' : 'no-preference' });
+    await page.goto('/');
+    await expect(page.locator('.connected-card')).toHaveCount(1);
+    await page.evaluate((mode) => {
+      if (mode === 'unsupported') {
+        Object.defineProperty(document, 'startViewTransition', {
+          value: undefined,
+          configurable: true,
+        });
+        return;
+      }
+      const start = document.startViewTransition.bind(document);
+      document.startViewTransition = (update) => {
+        document.documentElement.dataset.transitionStarted = '1';
+        const transition = start(update);
+        void transition.ready.then(() => {
+          document.documentElement.dataset.transitionReady = '1';
+        });
+        void transition.finished.then(() => {
+          document.documentElement.dataset.transitionFinished = '1';
+        });
+        return transition;
+      };
+    }, mode);
+    await page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true }).click();
+    await expect(page.getByRole('group', { name: 'Neo75 Cu 基础层可视化键盘' })).toBeVisible();
+    if (mode === 'native') {
+      await expect(page.locator('html')).toHaveAttribute('data-transition-ready', '1');
+      await expect(page.locator('html')).toHaveAttribute('data-transition-finished', '1');
+    } else await expect(page.locator('html')).not.toHaveAttribute('data-transition-started', '1');
+    await page.getByRole('button', { name: '返回设备中心', exact: true }).click();
+    await expect(page.locator('.connected-card')).toHaveCount(1);
+    await expect(page.locator('.sidebar')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
+
+async function mockConnectedKeyboard(page: Page) {
+  await page.addInitScript(() => {
+    class KeyboardFixture extends EventTarget {
+      vendorId = 0x36b0;
+      productId = 0x3021;
+      productName = 'NEO75';
+      collections = [{ usagePage: 0xff60, usage: 0x61 }];
+      opened = false;
+      async open() {
+        this.opened = true;
+      }
+      async close() {
+        this.opened = false;
+        document.documentElement.dataset.deviceClosed = '1';
+      }
+      async sendReport(_id: number, data: Uint8Array) {
+        const response = new Uint8Array(data);
+        if (data[0] === 1) response.set([0, 12], 1);
+        else if (data[0] === 0x11) response[1] = 1;
+        else if (![2, 0x12, 0x0c, 0x0d].includes(data[0])) throw new Error('Unexpected write');
+        this.dispatchEvent(
+          Object.assign(new Event('inputreport'), { data: new DataView(response.buffer) }),
+        );
+      }
+    }
+    const keyboard = new KeyboardFixture();
+    const hid = Object.assign(new EventTarget(), {
+      getDevices: async () => [keyboard],
+      requestDevice: async () => [keyboard],
+    });
+    Object.defineProperty(navigator, 'hid', { value: hid, configurable: true });
+  });
+}
+
+async function demo(page: Page, model = 'Neo75 Cu', autoSave = false) {
   await page.goto('/');
   await page.getByRole('button', { name: '体验演示' }).click();
   await page.getByRole('button', { name: `演示 ${model}`, exact: true }).click();
   await expect(page.locator('.connection-badge')).toHaveText('演示模式');
+  if (!autoSave) await page.getByRole('checkbox', { name: '自动保存', exact: true }).uncheck();
 }
 async function remapFirstKey(page: Page) {
   await page
@@ -26,17 +150,17 @@ test('editor can remap, undo, redo, save with backup, and recover the backup', a
   await page.getByRole('button', { name: '保存演示配置', exact: true }).click();
   await page.getByTestId('confirm-save').click();
   await expect(page.getByRole('status').filter({ hasText: '演示配置已更新' })).toBeVisible();
-  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
   await expect(page.locator('.profile-row')).toContainText('写入前备份');
-  await page.getByRole('button', { name: '载入草稿', exact: true }).click();
-  await expect(page.locator('.save-state')).toContainText('1 个按键');
+  await page.getByRole('button', { name: '载入配置', exact: true }).click();
+  await expect(page.locator('.save-state')).toContainText('待确认保存');
   expect(errors).toEqual([]);
 });
 test('profiles export and import without writing the device', async ({ page }) => {
   await demo(page);
-  await page.getByRole('button', { name: '我的方案', exact: true }).click();
-  await page.getByRole('textbox', { name: '方案名称' }).fill('我的办公方案');
-  await page.getByRole('button', { name: '保存当前方案', exact: true }).click();
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
+  await page.getByRole('textbox', { name: '配置名称' }).fill('我的办公方案');
+  await page.getByRole('button', { name: '保存为新配置', exact: true }).click();
   await expect(page.locator('.profile-row')).toContainText('我的办公方案');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出 我的办公方案', exact: true }).click();
@@ -225,37 +349,7 @@ test('a Shift event with no location automatically lights right Shift and stays 
 test('a device card disconnects independently without entering its workspace and can be reconnected', async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    class KeyboardFixture extends EventTarget {
-      vendorId = 0x36b0;
-      productId = 0x3021;
-      productName = 'NEO75';
-      collections = [{ usagePage: 0xff60, usage: 0x61 }];
-      opened = false;
-      async open() {
-        this.opened = true;
-      }
-      async close() {
-        this.opened = false;
-        document.documentElement.dataset.deviceClosed = '1';
-      }
-      async sendReport(_id: number, data: Uint8Array) {
-        const response = new Uint8Array(data);
-        if (data[0] === 1) response.set([0, 12], 1);
-        else if (data[0] === 0x11) response[1] = 1;
-        else if (![2, 0x12, 0x0c, 0x0d].includes(data[0])) throw new Error('Unexpected write');
-        this.dispatchEvent(
-          Object.assign(new Event('inputreport'), { data: new DataView(response.buffer) }),
-        );
-      }
-    }
-    const keyboard = new KeyboardFixture();
-    const hid = Object.assign(new EventTarget(), {
-      getDevices: async () => [keyboard],
-      requestDevice: async () => [keyboard],
-    });
-    Object.defineProperty(navigator, 'hid', { value: hid, configurable: true });
-  });
+  await mockConnectedKeyboard(page);
   await page.goto('/');
   await expect(page.locator('.connected-card')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true })).toBeVisible();
@@ -314,7 +408,7 @@ test('home requests native permission without a model picker and keeps device to
   });
   await page.goto('/');
   await expect(page.locator('.connected-card')).toHaveCount(0);
-  for (const name of ['按键设置', '我的方案', '按键测试'])
+  for (const name of ['按键设置', '配置管理', '按键测试'])
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   await expect(page.locator('.save-bar')).toHaveCount(0);
   await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
@@ -347,7 +441,7 @@ test('home keeps device settings private to the workspace and help lists support
 }) => {
   await page.goto('/');
   await expect(page.locator('.sidebar')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '我的方案', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '配置管理', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '连接诊断', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '连接帮助', exact: true }).click();
   await expect(page.getByRole('heading', { name: '目前支持的型号' })).toBeVisible();
@@ -391,9 +485,9 @@ test('profiles belong to the selected keyboard and cannot import another model',
   page,
 }) => {
   await demo(page);
-  await page.getByRole('button', { name: '我的方案', exact: true }).click();
-  await page.getByRole('textbox', { name: '方案名称' }).fill('Neo only');
-  await page.getByRole('button', { name: '保存当前方案', exact: true }).click();
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
+  await page.getByRole('textbox', { name: '配置名称' }).fill('Neo only');
+  await page.getByRole('button', { name: '保存为新配置', exact: true }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出 Neo only', exact: true }).click();
   const profile = await download;
@@ -401,14 +495,14 @@ test('profiles belong to the selected keyboard and cannot import another model',
   await page.getByLabel('返回设备中心', { exact: true }).click();
   await page.getByRole('button', { name: '体验演示', exact: true }).click();
   await page.getByRole('button', { name: '演示 TOFU PAD', exact: true }).click();
-  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
   await expect(page.locator('.profile-row')).toHaveCount(0);
   await page.locator('input[type=file]').setInputFiles(path!);
-  await expect(page.getByRole('alert')).toContainText('此方案属于 Neo75 Cu');
+  await expect(page.getByRole('alert')).toContainText('此配置属于 Neo75 Cu');
   await expect(page.locator('.profile-row')).toHaveCount(0);
   await page.getByLabel('返回设备中心', { exact: true }).click();
   await page.getByRole('button', { name: '继续 Neo75 Cu 演示' }).click();
-  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
   await expect(page.locator('.profile-row')).toContainText('Neo only');
 });
 test('tester scales to mobile, keeps coverage across layouts and uses Mac legends', async ({
@@ -500,7 +594,7 @@ for (const model of ['Neo75 Cu', 'TOFU PAD']) {
     await page.getByRole('button', { name: '设为 A', exact: true }).click();
     await expect(first).toHaveAccessibleName(/^A，/);
     await expect(page.locator('.save-state')).toContainText('2 个按键');
-    await page.getByRole('button', { name: '我的方案', exact: true }).click();
+    await page.getByRole('button', { name: '配置管理', exact: true }).click();
     await expect(page.locator('.profile-row')).toHaveCount(0);
   });
 }
@@ -532,7 +626,7 @@ test('keyboard navigation, layer changes and page changes do not accidentally re
   await page.getByRole('tab', { name: '00 基础层', exact: true }).click();
   await expect(capture).toHaveCount(0);
   await second.click();
-  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await page.getByRole('button', { name: '配置管理', exact: true }).click();
   await page.getByRole('button', { name: '按键设置', exact: true }).click();
   await expect(capture).toHaveCount(0);
   await expect(second).toHaveAccessibleName(/^D，/);

@@ -9,7 +9,7 @@ export async function saveProfile(
   snapshot: DeviceSnapshot,
   kind: Profile['kind'] = 'manual',
 ): Promise<Profile> {
-  if (!name.trim() || name.trim().length > 80) throw new Error('方案名称应为 1–80 个字符。');
+  if (!name.trim() || name.trim().length > 80) throw new Error('配置名称应为 1–80 个字符。');
   const profile: Profile = {
     id: crypto.randomUUID(),
     name: name.trim(),

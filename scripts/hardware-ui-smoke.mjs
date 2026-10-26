@@ -149,6 +149,11 @@ try {
     throw new Error('Automatic discovery unexpectedly requested a model.');
   await click('[aria-label="Neo75 Cu 开始配置"]');
   await waitFor('document.querySelector("h1")?.textContent === "Neo75 Cu"');
+  // This harness verifies draft isolation without hardware writes.
+  await evaluate(
+    `(()=>{const toggle=document.querySelector('.autosave-toggle input');if(toggle?.checked)toggle.click()})()`,
+  );
+  await waitFor("document.querySelector('.autosave-toggle input')?.checked === false");
   await click('[role="group"] [data-key-index="0"]');
   await evaluate(
     '[...document.querySelectorAll(".category-list button")].find(b=>b.textContent.trim()==="字母数字").click()',
@@ -156,18 +161,21 @@ try {
   await click('[aria-label="设为 A"]');
   await waitFor('document.querySelector(".save-state")?.textContent.includes("1 个按键")');
   await click('[aria-label="返回设备中心"]');
+  await waitFor('document.querySelectorAll(".connected-card").length > 0');
   await click('[aria-label="TOFU PAD 开始配置"]');
   await waitFor('document.querySelector("h1")?.textContent === "TOFU PAD"');
   if (await evaluate('document.querySelector(".save-state")?.textContent.includes("1 个按键")'))
     throw new Error('Neo draft leaked into TOFU session.');
   await click('[aria-label="返回设备中心"]');
+  await waitFor('document.querySelectorAll(".connected-card").length > 0');
   await click('[aria-label="Neo75 Cu 开始配置"]');
   await waitFor('document.querySelector(".save-state")?.textContent.includes("1 个按键")');
   await evaluate(
     '[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="撤销全部").click()',
   );
-  await waitFor('document.querySelector(".save-state")?.textContent.includes("与设备配置一致")');
+  await waitFor('document.querySelector(".save-state")?.textContent.includes("已保存到键盘")');
   await click('[aria-label="返回设备中心"]');
+  await waitFor('document.querySelectorAll(".connected-card").length > 0');
   await pause(300);
   const screenshot = await call('Page.captureScreenshot', { format: 'png' });
   await writeFile(join(output, 'connected-devices.png'), Buffer.from(screenshot.data, 'base64'));
@@ -182,6 +190,7 @@ try {
   await click('[aria-label="Neo75 Cu 开始配置"]');
   await waitFor('document.querySelector(".connection-badge")?.textContent === "USB 已连接"');
   await click('[aria-label="返回设备中心"]');
+  await waitFor('document.querySelectorAll(".connected-card").length > 0');
   await click('[aria-label="断开 Neo75 Cu"]');
   await waitFor(
     'document.querySelectorAll(".connected-card").length === 0 && !!document.querySelector(".empty-hub")',
