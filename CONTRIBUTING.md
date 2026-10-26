@@ -20,6 +20,18 @@ Contributions are welcome. Please include the original PCB revision, firmware in
 4. 首次运行浏览器测试前执行 `pnpm exec playwright install chromium`，再执行 `pnpm test:e2e`。
 5. 提交 PR，说明使用场景、改动和验证结果。界面改动附电脑及窄屏截图。
 
+## 打包与部署
+
+网页使用 React、TypeScript 和 Vite。`pnpm dev` 默认运行在 `http://localhost:5173/`；WSL 开发时，用 Windows 的 Chrome / Edge 连接硬件。
+
+```sh
+pnpm build
+pnpm package:offline  # 需要 Go 1.23+，生成 Windows、Linux 和 macOS 启动器
+pnpm test:package     # 检查当前系统的离线包
+```
+
+部署到自己的 GitHub Pages：将仓库设为公开，在 Settings → Pages 中选择 GitHub Actions，再向 `main` 推送代码。现有工作流会测试、构建并发布，不需要另购服务器或域名。
+
 ## 新增设备
 
 - 收集原装 PCB 版本、固件版本、USB VID/PID、可用配置接口、官方配列或 JSON。不要上传序列号、个人键位备份或私人宏内容。
@@ -35,7 +47,15 @@ Contributions are welcome. Please include the original PCB revision, firmware in
 
 测试还应覆盖：首次授权、刷新后自动连接、断线与重连、跨设备草稿隔离、保存失败时保留备份。没有真机验证的适配可以先提交草稿 PR，并明确未验证项目；正式支持列表只列已验证的型号和模式。
 
-现有 Windows 验收脚本见 `scripts/hardware-smoke.mjs` 和 `scripts/hardware-ui-smoke.mjs`。它们针对目前的两款设备，新增设备时需要扩展。测试结果放在被 Git 忽略的 `.hardware-test-results/`。
+现有脚本针对目前的两款设备，新增设备时需要扩展。在项目目录运行 `node scripts/hardware-server.mjs`，然后用 Windows Node.js 执行：
+
+```sh
+node --experimental-websocket scripts/hardware-smoke.mjs                 # 只读
+node --experimental-websocket scripts/hardware-smoke.mjs --write        # 临时改键、读回并恢复
+node --experimental-websocket scripts/hardware-smoke.mjs --write --macros
+```
+
+生产页面的连接与草稿隔离测试：先运行 `pnpm preview`，再执行 `node --experimental-websocket scripts/hardware-ui-smoke.mjs`。该脚本关闭自动保存，不写入设备。测试备份与结果放在被 Git 忽略的 `.hardware-test-results/`。
 
 ## 协议与许可
 
