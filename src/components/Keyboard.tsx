@@ -34,7 +34,7 @@ export function Keyboard({
   baseline?: DeviceSnapshot;
   layerId: number;
   selected?: number | null;
-  onSelect?: (index: number) => void;
+  onSelect?: (index: number, activate?: boolean) => void;
   miniature?: boolean;
 }) {
   const layer = snapshot.layers.find((l) => l.id === layerId) ?? snapshot.layers[0];
@@ -119,7 +119,7 @@ export function Keyboard({
                 e.preventDefault();
                 const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
                 const next = keys[(position + delta + keys.length) % keys.length];
-                onSelect?.(next.index);
+                onSelect?.(next.index, false);
                 (
                   e.currentTarget.parentElement?.querySelector(
                     `[data-key-index="${next.index}"]`,

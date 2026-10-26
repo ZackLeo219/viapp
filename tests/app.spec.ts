@@ -441,7 +441,7 @@ test('key capture remaps a single key while rejecting unsupported chords without
     .getByRole('group', { name: 'Neo75 Cu 基础层可视化键盘' })
     .locator('[data-key-index="0"]')
     .click();
-  await page.getByRole('button', { name: '录入按键', exact: true }).click();
+  await expect(page.getByRole('group', { name: '录入目标按键' })).toBeFocused();
   await page.keyboard.press('a');
   await expect(page.locator('.inspector-key')).toHaveText('A');
   await expect(page.locator('.save-state')).toContainText('1 个按键');
@@ -466,4 +466,79 @@ test('key capture remaps a single key while rejecting unsupported chords without
       .getByRole('group', { name: '录入目标按键' })
       .dispatchEvent(type, { key: 'Shift', code: '', location: 0, shiftKey: type === 'keydown' });
   await expect(page.locator('.inspector-key')).toHaveText('R Shift');
+});
+
+for (const model of ['Neo75 Cu', 'TOFU PAD']) {
+  test(`${model}: clicking a key starts capture, including the same key again, without taking over search`, async ({
+    page,
+  }) => {
+    await demo(page, model);
+    const board = page.getByRole('group', { name: `${model} 基础层可视化键盘` });
+    const first = board.locator('[data-key-index="0"]');
+    const second = board.locator('[data-key-index="1"]');
+    const capture = page.getByRole('group', { name: '录入目标按键' });
+    await first.click();
+    await expect(capture).toBeFocused();
+    await page.keyboard.press('a');
+    await expect(first).toHaveAccessibleName(/^A，/);
+    await expect(page.getByRole('button', { name: '录入按键', exact: true })).toBeFocused();
+    await page.keyboard.press('b');
+    await expect(first).toHaveAccessibleName(/^A，/);
+    await first.click();
+    await expect(capture).toBeFocused();
+    await page.keyboard.press('b');
+    await expect(first).toHaveAccessibleName(/^B，/);
+    await first.click();
+    await second.click();
+    await page.keyboard.press('c');
+    await expect(second).toHaveAccessibleName(/^C，/);
+    await expect(first).toHaveAccessibleName(/^B，/);
+    await first.click();
+    await page.getByRole('textbox', { name: '搜索按键功能' }).fill('A');
+    await expect(capture).toHaveCount(0);
+    await expect(first).toHaveAccessibleName(/^B，/);
+    await page.getByRole('button', { name: '设为 A', exact: true }).click();
+    await expect(first).toHaveAccessibleName(/^A，/);
+    await expect(page.locator('.save-state')).toContainText('2 个按键');
+    await page.getByRole('button', { name: '我的方案', exact: true }).click();
+    await expect(page.locator('.profile-row')).toHaveCount(0);
+  });
+}
+
+test('keyboard navigation, layer changes and page changes do not accidentally restart capture', async ({
+  page,
+}) => {
+  await demo(page);
+  const board = page.getByRole('group', { name: 'Neo75 Cu 基础层可视化键盘' });
+  const first = board.locator('[data-key-index="0"]');
+  const second = board.locator('[data-key-index="1"]');
+  const capture = page.getByRole('group', { name: '录入目标按键' });
+  await first.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(second).toBeFocused();
+  await expect(capture).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(capture).toBeFocused();
+  await expect(page.getByRole('button', { name: '保存演示配置', exact: true })).toBeDisabled();
+  await page.keyboard.press('d');
+  await expect(second).toHaveAccessibleName(/^D，/);
+  await second.click();
+  await page.getByRole('button', { name: '取消录入', exact: true }).click();
+  await page.keyboard.press('e');
+  await expect(second).toHaveAccessibleName(/^D，/);
+  await second.click();
+  await page.getByRole('tab', { name: '01 功能层 1', exact: true }).click();
+  await expect(capture).toHaveCount(0);
+  await page.getByRole('tab', { name: '00 基础层', exact: true }).click();
+  await expect(capture).toHaveCount(0);
+  await second.click();
+  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await page.getByRole('button', { name: '按键设置', exact: true }).click();
+  await expect(capture).toHaveCount(0);
+  await expect(second).toHaveAccessibleName(/^D，/);
+  await second.click();
+  await expect(capture).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(page.locator('.inspector-key')).toHaveText('Space');
+  await expect(capture).toHaveCount(0);
 });

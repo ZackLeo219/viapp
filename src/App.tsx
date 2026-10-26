@@ -599,11 +599,17 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
 
 function KeymapPage() {
   const s = useWorkspace();
+  const [capture, setCapture] = useState<{
+    index: number;
+    layerId: number;
+    attempt: number;
+  } | null>(null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('常用');
   const actions = useMemo(() => actionsFor(s.draft), [s.draft]);
   const layer = s.draft.layers.find((l) => l.id === s.layerId)!;
   const selected = s.selectedIndex === null ? null : layer.bindings[s.selectedIndex];
+  const autoCapture = capture?.index === s.selectedIndex && capture?.layerId === s.layerId;
   const filtered = actions.filter(
     (a) =>
       (query.trim() || category === '全部' || a.category === category) &&
@@ -657,7 +663,10 @@ function KeymapPage() {
                 role="tab"
                 aria-selected={s.layerId === l.id}
                 className={s.layerId === l.id ? 'active' : ''}
-                onClick={() => s.selectLayer(l.id)}
+                onClick={() => {
+                  setCapture(null);
+                  s.selectLayer(l.id);
+                }}
               >
                 <span>{index.toString().padStart(2, '0')}</span>
                 {l.name}
@@ -675,7 +684,14 @@ function KeymapPage() {
             baseline={s.baseline}
             layerId={s.layerId}
             selected={s.selectedIndex}
-            onSelect={s.selectKey}
+            onSelect={(index, activate = true) => {
+              s.selectKey(index);
+              setCapture((previous) =>
+                activate
+                  ? { index, layerId: s.layerId, attempt: (previous?.attempt ?? 0) + 1 }
+                  : null,
+              );
+            }}
           />
           <div className="keyboard-legend">
             <span>
@@ -691,7 +707,7 @@ function KeymapPage() {
         </div>
         <div className="editor-tip">
           <MousePointer2 size={17} />
-          <span>选中按键后，在右侧设置功能。</span>
+          <span>点选键位，再按下目标键。</span>
         </div>
       </section>
       <aside className="panel inspector">
@@ -714,7 +730,8 @@ function KeymapPage() {
               </span>
             </div>
             <KeyCapture
-              key={`${s.layerId}-${s.selectedIndex}`}
+              key={`${s.layerId}-${s.selectedIndex}-${autoCapture ? capture.attempt : 'manual'}`}
+              autoStart={autoCapture}
               actions={actions}
               onAssign={assign}
               disabled={s.operation !== 'idle'}

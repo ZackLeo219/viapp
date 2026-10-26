@@ -8,26 +8,39 @@ export function KeyCapture({
   actions,
   onAssign,
   disabled,
+  autoStart = false,
 }: {
   actions: KeyAction[];
   onAssign(action: KeyAction): void;
   disabled: boolean;
+  autoStart?: boolean;
 }) {
-  const [recording, setRecording] = useState(false);
+  const [recording, setRecording] = useState(autoStart && !disabled);
   const [message, setMessage] = useState('');
   const stage = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const modifier = useRef<string | null>(null);
   const rejected = useRef(false);
+  const restoreFocus = useRef(false);
+  const stop = (restore = false) => {
+    restoreFocus.current = restore;
+    setRecording(false);
+  };
   useEffect(() => {
     if (recording) {
       modifier.current = null;
       rejected.current = false;
-      stage.current?.focus();
+      stage.current?.focus({ preventScroll: true });
+    } else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      trigger.current?.focus({ preventScroll: true });
     }
   }, [recording]);
   useEffect(() => {
-    const cancel = () => setRecording(false);
+    if (disabled) stop();
+  }, [disabled]);
+  useEffect(() => {
+    const cancel = () => stop();
     window.addEventListener('blur', cancel);
     return () => window.removeEventListener('blur', cancel);
   }, []);
@@ -38,8 +51,7 @@ export function KeyCapture({
       return;
     }
     onAssign(action);
-    setRecording(false);
-    trigger.current?.focus({ preventScroll: true });
+    stop(true);
   };
   const key = (e: KeyboardEvent<HTMLDivElement>, down: boolean) => {
     e.preventDefault();
@@ -64,18 +76,20 @@ export function KeyCapture({
   };
   return (
     <div className="key-capture">
-      <button
-        ref={trigger}
-        className="button capture-trigger"
-        disabled={disabled}
-        onClick={() => {
-          setMessage('');
-          setRecording(true);
-        }}
-      >
-        <Keyboard size={16} />
-        录入按键
-      </button>
+      {!recording && (
+        <button
+          ref={trigger}
+          className="button capture-trigger"
+          disabled={disabled}
+          onClick={() => {
+            setMessage('');
+            setRecording(true);
+          }}
+        >
+          <Keyboard size={16} />
+          录入按键
+        </button>
+      )}
       {recording && (
         <div className="capture-box">
           <div
@@ -85,7 +99,7 @@ export function KeyCapture({
             aria-label="录入目标按键"
             onKeyDown={(e) => key(e, true)}
             onKeyUp={(e) => key(e, false)}
-            onBlur={() => setRecording(false)}
+            onBlur={() => stop()}
           >
             <span className="status-dot live" />
             按下目标键
@@ -94,8 +108,7 @@ export function KeyCapture({
             aria-label="取消录入"
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => {
-              setRecording(false);
-              trigger.current?.focus();
+              stop(true);
             }}
           >
             <X size={15} />
