@@ -65,6 +65,7 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
     !Array.isArray(s.keys) ||
     s.keys.length < 1 ||
     s.keys.length > 128 ||
+    new Set(s.keys.map((k: unknown) => (record(k) ? k.id : null))).size !== s.keys.length ||
     new Set(s.keys.map((k: unknown) => (record(k) ? k.index : null))).size !== s.keys.length
   )
     return bad();
@@ -94,6 +95,8 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
   if (
     !Array.isArray(s.behaviors) ||
     s.behaviors.length > 256 ||
+    new Set(s.behaviors.map((b: unknown) => (record(b) ? b.id : null))).size !==
+      s.behaviors.length ||
     s.behaviors.some(
       (b) =>
         !record(b) ||
@@ -110,7 +113,10 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
     s.macros.some(
       (m) => !Array.isArray(m) || m.length > 16384 || m.some((n) => !integer(n, 1, 255)),
     ) ||
-    s.macros.flat().length + s.macros.length > (s.macroBufferSize as number)
+    s.macros.flat().length + s.macros.length > (s.macroBufferSize as number) ||
+    (s.protocol === 'via' &&
+      s.macros.length > 0 &&
+      s.macros.flat().length + s.macros.length === s.macroBufferSize)
   )
     return bad();
   return clone(s) as unknown as DeviceSnapshot;

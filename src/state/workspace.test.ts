@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DemoDriver } from '../domain/demo';
-import { isDirty, useWorkspace } from './workspace';
+import { hasUnsavedDrafts, isAutoSavePending, isDirty, useWorkspace } from './workspace';
 import { watchDevices } from './discovery';
 
 const mocks = vi.hoisted(() => ({
@@ -43,6 +43,36 @@ afterEach(async () => {
 });
 
 describe('device center and independent sessions', () => {
+  it('keeps unapplied macro input across pages and devices without scheduling a write', async () => {
+    await state().connect('neo75cu', true);
+    state().setAutoSave(true);
+    state().stageMacro(0, [{ type: 'text', text: 'unfinished' }]);
+    state().stageMacro(1, [{ type: 'down', key: 224 }]);
+    expect(hasUnsavedDrafts(state())).toBe(true);
+    expect(isDirty(state())).toBe(false);
+    expect(isAutoSavePending(state())).toBe(false);
+    state().setPage('profiles');
+    state().setPage('devices');
+    await state().connect('tofu-pad', true);
+    expect(state().macroDrafts).toEqual({});
+    expect(hasUnsavedDrafts(state())).toBe(true);
+    state().openDevice('neo75cu');
+    expect(state().macroDrafts[0]).toEqual([{ type: 'text', text: 'unfinished' }]);
+    state().editMacro(0, []);
+    expect(state().macroDrafts[0]).toBeUndefined();
+    expect(state().macroDrafts[1]).toEqual([{ type: 'down', key: 224 }]);
+    state().discardMacro(1);
+    expect(hasUnsavedDrafts(state())).toBe(false);
+  });
+  it('preserves unfinished macro input when reconnecting the same device', async () => {
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    await state().connect('neo75cu');
+    state().stageMacro(0, [{ type: 'text', text: 'keep me' }]);
+    await state().disconnect();
+    await state().connect('neo75cu');
+    expect(state().macroDrafts[0]).toEqual([{ type: 'text', text: 'keep me' }]);
+    expect(hasUnsavedDrafts(state())).toBe(true);
+  });
   it('shows configuration only after a successful connection and explicit device selection', async () => {
     expect(state().page).toBe('devices');
     expect(state().sessions).toEqual({});

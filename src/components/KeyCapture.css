@@ -37,11 +37,11 @@
 }
 .capture-box button {
   padding: 6px;
-  color: #6e815b;
+  color: var(--muted);
 }
 .key-capture > p {
   font-size: 11px;
-  color: #987741;
+  color: var(--muted);
   line-height: 1.7;
   margin-top: 10px;
 }
@@ -51,7 +51,7 @@
   align-content: center;
   min-height: 370px;
   gap: 20px;
-  color: #98a589;
+  color: var(--muted);
 }
 .inspector-empty > svg {
   padding: 20px;
@@ -59,7 +59,7 @@
   height: 72px;
   border-radius: 15px;
   background: #f3f6ec;
-  color: #a3b58c;
+  color: var(--muted);
 }
 .inspector-empty > p {
   font-size: 12px;

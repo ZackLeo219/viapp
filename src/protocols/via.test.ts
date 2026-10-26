@@ -87,4 +87,28 @@ describe('VIA stock adapter', () => {
     expect(() => encodeMacroBuffer([[65, 66]], 3)).toThrow('容量');
     expect(() => encodeMacroBuffer([[0]], 10)).toThrow('无效');
   });
+  it('waits for an in-flight HID close before reconnecting after a transport failure', async () => {
+    const fake = fakeHid();
+    let release!: () => void;
+    vi.mocked(fake.device.close).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const transport = new ViaTransport(fake.device);
+    transport.disconnected();
+    let released = false;
+    const closing = transport.close();
+    void closing.then(() => {
+      released = true;
+    });
+    expect(transport.close()).toBe(closing);
+    await Promise.resolve();
+    expect(released).toBe(false);
+    expect(fake.device.close).toHaveBeenCalledOnce();
+    release();
+    await closing;
+    expect(released).toBe(true);
+  });
 });

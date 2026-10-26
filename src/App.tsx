@@ -116,6 +116,7 @@ export default function App() {
   const inWorkspace = s.workspaceOpen;
   const unsaved = hasUnsavedDrafts(s);
   const dirty = isDirty(s);
+  const pendingMacros = Object.keys(s.macroDrafts).length;
   const busy = isWorkspaceBusy(s);
   const editingBlocked = isEditingBlocked(s);
   const manualSave = !s.autoSave || s.requiresReview;
@@ -141,6 +142,9 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (
         s.page !== 'keymap' ||
+        help ||
+        review ||
+        connectionDialog !== null ||
         e.defaultPrevented ||
         !(e.ctrlKey || e.metaKey) ||
         e.key.toLowerCase() !== 'z' ||
@@ -154,7 +158,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [s.undo, s.redo, s.page]);
+  }, [s.undo, s.redo, s.page, help, review, connectionDialog]);
   const connect = (model: ModelId) => {
     void s.connect(model, connectionDialog === 'demo').then((ok) => {
       if (ok) setConnectionDialog(null);
@@ -336,6 +340,12 @@ export default function App() {
               <span>设备已锁定，请按原厂说明解锁后重新读取。</span>
             </div>
           )}
+          {inWorkspace && s.draft.firmwareUnsaved && (
+            <div className="alert error" role="status">
+              <Info size={18} />
+              <span>键盘中有未保存的配置，请先在原配置工具中保存或撤销，再重新读取。</span>
+            </div>
+          )}
           {(s.error || s.notice) && (
             <div
               className={`alert ${s.error ? 'error' : 'success'}`}
@@ -373,7 +383,7 @@ export default function App() {
             <div className="save-state" role="status" aria-live="polite" aria-atomic="true">
               {busy ? (
                 <LoaderCircle className="spin" size={19} />
-              ) : dirty ? (
+              ) : dirty || pendingMacros || s.draft.firmwareUnsaved ? (
                 <span className="unsaved-dot" />
               ) : (
                 <CheckCheck size={19} />
@@ -388,17 +398,26 @@ export default function App() {
                         ? '保存失败，修改已保留'
                         : s.requiresReview && dirty
                           ? '配置已载入，待确认保存'
-                          : dirty
-                            ? `${changes.length} 个按键${macroChanges ? `、${macroChanges} 个宏` : ''}尚未保存`
-                            : s.connection === 'device'
-                              ? '已保存到键盘'
-                              : s.connection === 'demo'
-                                ? '演示配置已同步'
-                                : '设备未连接'}
+                          : pendingMacros
+                            ? `${pendingMacros} 个宏尚未保存`
+                            : s.draft.firmwareUnsaved
+                              ? '键盘中有未保存配置'
+                              : dirty
+                                ? `${[changes.length && `${changes.length} 个按键`, macroChanges && `${macroChanges} 个宏`].filter(Boolean).join('、')}尚未保存`
+                                : s.connection === 'device'
+                                  ? '已保存到键盘'
+                                  : s.connection === 'demo'
+                                    ? '演示配置已同步'
+                                    : '设备未连接'}
                 </strong>
               </div>
             </div>
             <div className="save-actions">
+              {pendingMacros > 0 && s.page !== 'macros' && (
+                <Button onClick={() => s.setPage('macros')} disabled={busy}>
+                  继续编辑宏
+                </Button>
+              )}
               <label className="autosave-toggle" title="改键后自动保存到键盘">
                 <input
                   type="checkbox"
@@ -514,6 +533,7 @@ export default function App() {
           <Button onClick={() => setReview(false)}>继续编辑</Button>
           <Button
             primary
+            disabled={busy || s.connection === 'offline' || s.draft.locked}
             onClick={() => {
               setReview(false);
               void s.apply();
@@ -608,7 +628,10 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
                       <h2>{session.draft.name}</h2>
                       <p>
                         <span className="status-dot live" />
-                        USB 已连接{isDirty(session) && <span className="draft-tag">未保存</span>}
+                        USB 已连接
+                        {(isDirty(session) || Object.keys(session.macroDrafts).length > 0) && (
+                          <span className="draft-tag">未保存</span>
+                        )}
                       </p>
                     </div>
                     <ArrowRight size={20} />
@@ -705,10 +728,11 @@ function KeymapPage() {
   const layer = s.draft.layers.find((l) => l.id === s.layerId)!;
   const selected = s.selectedIndex === null ? null : layer.bindings[s.selectedIndex];
   const autoCapture = capture?.index === s.selectedIndex && capture?.layerId === s.layerId;
+  const search = query.trim().toLowerCase();
   const filtered = actions.filter(
     (a) =>
-      (query.trim() || category === '全部' || a.category === category) &&
-      `${a.label} ${a.description}`.toLowerCase().includes(query.toLowerCase()),
+      (search || category === '全部' || a.category === category) &&
+      `${a.label} ${a.description}`.toLowerCase().includes(search),
   );
   const categories = [
     '全部',
@@ -895,15 +919,12 @@ function KeymapPage() {
 
 function MacrosPage() {
   const s = useWorkspace();
-  const [index, setIndex] = useState(0);
-  const [steps, setSteps] = useState<MacroStep[]>([]);
-  const [unknown, setUnknown] = useState(false);
-  const bytes = JSON.stringify(s.draft.macros[index] ?? []);
-  useEffect(() => {
-    const decoded = decodeMacro(JSON.parse(bytes) as number[], s.draft.protocolVersion);
-    setUnknown(decoded === null);
-    setSteps(decoded ?? []);
-  }, [bytes, index, s.model, s.draft.protocolVersion]);
+  const [index, setIndex] = useState(() => Number(Object.keys(s.macroDrafts)[0] ?? 0));
+  const decoded = decodeMacro(s.draft.macros[index] ?? [], s.draft.protocolVersion);
+  const unknown = decoded === null;
+  const steps = s.macroDrafts[index] ?? decoded ?? [];
+  const setSteps = (next: MacroStep[] | ((steps: MacroStep[]) => MacroStep[])) =>
+    s.stageMacro(index, typeof next === 'function' ? next(steps) : next);
   if (s.draft.protocol === 'zmk')
     return (
       <section className="panel feature-note">
@@ -934,17 +955,27 @@ function MacrosPage() {
       <div className="macro-layout">
         <div className="macro-slots">
           {s.draft.macros.map((m, i) => (
-            <button key={i} className={index === i ? 'active' : ''} onClick={() => setIndex(i)}>
+            <button
+              key={i}
+              className={index === i ? 'active' : ''}
+              onClick={() => setIndex(i)}
+              aria-pressed={index === i}
+            >
               <Command size={15} />
               <span>宏 {i + 1}</span>
-              <small>{m.length ? `${m.length} B` : '空'}</small>
+              <small>{s.macroDrafts[i] ? '未保存' : m.length ? `${m.length} B` : '空'}</small>
             </button>
           ))}
         </div>
-        <div className="macro-editor">
+        <fieldset className="macro-editor" disabled={isEditingBlocked(s)}>
           <div className="section-title">
             <h3>宏 {index + 1}</h3>
             <span className="subtle-tag">M{index}</span>
+            {s.macroDrafts[index] && (
+              <Button className="macro-discard" onClick={() => s.discardMacro(index)}>
+                放弃编辑
+              </Button>
+            )}
           </div>
           {unknown && <div className="alert error">此宏包含未知编码，编辑并应用会覆盖原内容。</div>}
           {!steps.length && (
@@ -982,6 +1013,7 @@ function MacrosPage() {
                   <input
                     aria-label={`动作 ${i + 1} 文本`}
                     placeholder="英文、数字或符号"
+                    maxLength={Math.max(0, s.draft.macroBufferSize - 1)}
                     value={step.text}
                     onChange={(e) => update(i, { ...step, text: e.target.value })}
                   />
@@ -1055,7 +1087,7 @@ function MacrosPage() {
               {s.autoSave && !s.requiresReview ? '保存宏' : '应用到草稿'} <Check size={16} />
             </Button>
           </div>
-        </div>
+        </fieldset>
       </div>
     </section>
   );
@@ -1098,7 +1130,9 @@ function ProfilesPage() {
               '未连接'
             ) : s.autoSaveBlocked ? (
               '保存失败'
-            ) : isDirty(s) ? (
+            ) : s.baseline.firmwareUnsaved ? (
+              '设备尚未保存'
+            ) : isDirty(s) || Object.keys(s.macroDrafts).length > 0 ? (
               '有待保存修改'
             ) : (
               <>

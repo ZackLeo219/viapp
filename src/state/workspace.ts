@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { previewSnapshot, DemoDriver } from '../domain/demo';
 import {
   clone,
+  assertCompatible,
   equalBinding,
   errorMessage,
   type Binding,
@@ -15,6 +16,7 @@ import { saveProfile } from './database';
 import { ViaDriver } from '../protocols/via';
 import { ZmkDriver } from '../protocols/zmk';
 import { requestDeviceAccess, type DeviceAccess } from '../protocols/discovery';
+import { decodeMacro, type MacroStep } from '../domain/macros';
 
 type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test';
 interface DeviceSession {
@@ -26,6 +28,7 @@ interface DeviceSession {
   selectedIndex: number | null;
   history: DeviceSnapshot[];
   future: DeviceSnapshot[];
+  macroDrafts: Record<number, MacroStep[]>;
   autoSaveRequested: boolean;
   requiresReview: boolean;
   autoSaveBlocked: boolean;
@@ -49,6 +52,7 @@ interface Workspace {
   selectedIndex: number | null;
   history: DeviceSnapshot[];
   future: DeviceSnapshot[];
+  macroDrafts: Record<number, MacroStep[]>;
   logs: Diagnostic[];
   error: string | null;
   notice: string | null;
@@ -67,6 +71,8 @@ interface Workspace {
   setAutoSave(enabled: boolean): void;
   edit(index: number, binding: Binding): void;
   editMacro(index: number, bytes: number[]): void;
+  stageMacro(index: number, steps: MacroStep[]): void;
+  discardMacro(index: number): void;
   selectKey(index: number | null): void;
   selectLayer(id: number): void;
   undo(): void;
@@ -87,7 +93,12 @@ export const isDirty = (s: Pick<Workspace, 'baseline' | 'draft'>) =>
   !sameConfiguration(s.baseline, s.draft);
 export const hasUnsavedDrafts = (s: Workspace) =>
   isDirty(s) ||
-  Object.values(s.sessions).some((session) => session.model !== s.model && isDirty(session));
+  Object.keys(s.macroDrafts).length > 0 ||
+  Object.values(s.sessions).some(
+    (session) =>
+      session.model !== s.model &&
+      (isDirty(session) || Object.keys(session.macroDrafts).length > 0),
+  );
 export const isAutoSavePending = (s: Workspace) =>
   s.autoSave &&
   s.autoSaveRequested &&
@@ -115,6 +126,7 @@ function rememberCurrent() {
     selectedIndex,
     history,
     future,
+    macroDrafts,
     sessions,
     autoSaveRequested,
     requiresReview,
@@ -133,6 +145,7 @@ function rememberCurrent() {
         selectedIndex,
         history,
         future,
+        macroDrafts,
         autoSaveRequested,
         requiresReview,
         autoSaveBlocked,
@@ -159,6 +172,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   selectedIndex: null,
   history: [],
   future: [],
+  macroDrafts: {},
   logs: [],
   error: null,
   notice: null,
@@ -252,10 +266,19 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         selectedIndex: null,
         history: [],
         future: [],
+        macroDrafts: {},
         autoSaveRequested: false,
         requiresReview: false,
         autoSaveBlocked: false,
       };
+      if (previous) {
+        try {
+          assertCompatible(previous.draft, snapshot);
+          session.macroDrafts = previous.macroDrafts;
+        } catch {
+          // Staged macro input belongs to this device and firmware only.
+        }
+      }
       if (previous && isDirty(previous)) {
         await saveProfile(`${previous.draft.name} · 重连前草稿`, previous.draft, 'draft');
         try {
@@ -357,8 +380,8 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     if (!driver || isWorkspaceBusy(get()) || get().connection === 'offline') return;
     set({ operation: 'reading', error: null, progress: '读取设备配置' });
     try {
-      if (isDirty(get()))
-        await saveProfile(`${get().draft.name} · 读取前草稿`, get().draft, 'draft');
+      const hadDraft = isDirty(get());
+      if (hadDraft) await saveProfile(`${get().draft.name} · 读取前草稿`, get().draft, 'draft');
       const snapshot = await driver.read();
       set({
         baseline: snapshot,
@@ -372,7 +395,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         autoSaveRequested: false,
         requiresReview: false,
         autoSaveBlocked: false,
-        notice: '已重新读取。未保存的修改已备份到本地配置。',
+        notice: hadDraft ? '已重新读取，原草稿已备份。' : '已重新读取。',
       });
       log('设备配置已重新读取。', 'success');
     } catch (e) {
@@ -454,15 +477,35 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   editMacro(index, bytes) {
     if (isEditingBlocked(get()) || index < 0 || index >= get().draft.macros.length) return;
     set((s) => {
-      if (JSON.stringify(s.draft.macros[index]) === JSON.stringify(bytes)) return s;
+      const macroDrafts = { ...s.macroDrafts };
+      delete macroDrafts[index];
+      if (JSON.stringify(s.draft.macros[index]) === JSON.stringify(bytes)) return { macroDrafts };
       const draft = clone(s.draft);
       draft.macros[index] = [...bytes];
       return {
         draft,
         history: [...s.history.slice(-99), clone(s.draft)],
         future: [],
+        macroDrafts,
         autoSaveRequested: true,
       };
+    });
+  },
+  stageMacro(index, steps) {
+    if (isEditingBlocked(get()) || !get().draft.macros[index]) return;
+    set((s) => {
+      const macroDrafts = { ...s.macroDrafts };
+      const original = decodeMacro(s.draft.macros[index], s.draft.protocolVersion);
+      if (JSON.stringify(original) === JSON.stringify(steps)) delete macroDrafts[index];
+      else macroDrafts[index] = clone(steps);
+      return { macroDrafts };
+    });
+  },
+  discardMacro(index) {
+    set((s) => {
+      const macroDrafts = { ...s.macroDrafts };
+      delete macroDrafts[index];
+      return { macroDrafts };
     });
   },
   undo() {
@@ -518,6 +561,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         selectedIndex: null,
         history: [],
         future: [],
+        macroDrafts: target?.macroDrafts ?? {},
         page: 'keymap',
         autoSaveRequested: false,
         requiresReview: true,

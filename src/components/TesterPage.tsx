@@ -195,7 +195,7 @@ export function TesterPage({ suspended = false }: { suspended?: boolean }) {
             <span className={`status-dot ${state.listening ? 'live' : ''}`} />
             {state.listening ? '请按键 · 双按 Esc 暂停' : '已暂停 · 点击键盘继续'}
           </div>
-          <div className="tester-scroll">
+          <div className="tester-scroll" tabIndex={0} role="group" aria-label="测试键盘区域">
             <svg
               className={`tester-keyboard ${layoutId === 'numpad' ? 'numpad' : ''}`}
               viewBox={`0 0 ${layout.width * unit + 16} ${layout.height * unit + 16}`}

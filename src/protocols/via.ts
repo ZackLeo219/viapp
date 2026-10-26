@@ -11,6 +11,7 @@ export class ViaTransport {
     prefix: number[];
   };
   private closed = false;
+  private closing?: Promise<void>;
   onDisconnect?: (reason: string) => void;
   constructor(
     private device: HIDDevice,
@@ -64,12 +65,15 @@ export class ViaTransport {
     this.chain = task.catch(() => undefined);
     return task;
   }
-  async close() {
-    if (this.closed) return;
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
     this.closed = true;
     this.settle(new Error('连接已关闭。'));
     this.device.removeEventListener('inputreport', this.onReport);
-    if (this.device.opened) await this.device.close().catch(() => undefined);
+    this.closing = this.device.opened
+      ? this.device.close().catch(() => undefined)
+      : Promise.resolve();
+    return this.closing;
   }
   disconnected() {
     this.fail('键盘已拔出，未保存的编辑仍保留在页面中。');

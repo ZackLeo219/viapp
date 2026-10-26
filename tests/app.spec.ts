@@ -275,6 +275,66 @@ test('macro editing validates text and saves a real sequence to the simulated de
   await page.getByTestId('confirm-save').click();
   await expect(page.getByRole('status').filter({ hasText: '演示配置已更新' })).toBeVisible();
 });
+test('unfinished macros survive slot and page switches and remain separate from saved configuration', async ({
+  page,
+}) => {
+  await demo(page, 'Neo75 Cu', true);
+  await page.getByRole('button', { name: '宏编辑器', exact: true }).click();
+  await page.getByRole('button', { name: '＋ 文本', exact: true }).click();
+  await page.getByRole('textbox', { name: '动作 1 文本' }).fill('First macro');
+  await page.locator('.macro-slots button').nth(1).click();
+  await page.getByRole('button', { name: '＋ 按键', exact: true }).click();
+  await page.getByRole('combobox', { name: '动作 1 类型' }).selectOption('down');
+  await expect(page.locator('.save-state')).toHaveText('2 个宏尚未保存');
+  await page.locator('.macro-slots button').nth(0).click();
+  await expect(page.getByRole('textbox', { name: '动作 1 文本' })).toHaveValue('First macro');
+  await page.getByRole('button', { name: '按键设置', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('2 个宏尚未保存');
+  await page.getByRole('button', { name: '继续编辑宏', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '动作 1 文本' })).toHaveValue('First macro');
+  await page.getByRole('button', { name: '保存宏', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('1 个宏尚未保存');
+  await page.locator('.macro-slots button').nth(1).click();
+  await expect(page.getByRole('combobox', { name: '动作 1 类型' })).toHaveValue('down');
+  await page.getByRole('button', { name: '保存宏', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('释放');
+  await expect(page.getByRole('combobox', { name: '动作 1 类型' })).toHaveValue('down');
+  await page.getByRole('button', { name: '放弃编辑', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await page.getByRole('button', { name: '按键设置', exact: true }).click();
+  await page.getByRole('button', { name: '重新读取设备', exact: true }).click();
+  await page.getByRole('button', { name: '宏编辑器', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '动作 1 文本' })).toHaveValue('First macro');
+});
+test('unapplied macro input warns before closing and fits the narrow layout', async ({ page }) => {
+  await demo(page, 'Neo75 Cu', true);
+  await page.getByRole('button', { name: '宏编辑器', exact: true }).click();
+  await page.getByRole('button', { name: '＋ 文本', exact: true }).click();
+  await page.getByRole('textbox', { name: '动作 1 文本' }).fill('Keep on this page');
+  const dialog = page.waitForEvent('dialog');
+  await page.close({ runBeforeUnload: true });
+  const prompt = await dialog;
+  expect(prompt.type()).toBe('beforeunload');
+  await prompt.dismiss();
+  expect(page.isClosed()).toBe(false);
+  await expect(page.getByRole('textbox', { name: '动作 1 文本' })).toHaveValue('Keep on this page');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '按键设置', exact: true }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: '继续编辑宏', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '动作 1 文本' })).toHaveValue('Keep on this page');
+});
+test('help dialogs do not allow undo shortcuts to change the keyboard behind them', async ({
+  page,
+}) => {
+  await demo(page);
+  await remapFirstKey(page);
+  await page.getByRole('button', { name: '连接帮助', exact: true }).click();
+  await page.keyboard.press('Control+z');
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await expect(page.locator('[data-key-index="0"]')).toHaveAccessibleName(/^A，/);
+  await expect(page.locator('.save-state')).toContainText('1 个按键');
+});
 test('TOFU uses its own behavior model and does not offer unsupported macro creation', async ({
   page,
 }) => {

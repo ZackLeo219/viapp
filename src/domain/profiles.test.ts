@@ -36,4 +36,23 @@ describe('profile integrity', () => {
       );
     }
   });
+  it('rejects ambiguous key and behavior identifiers', () => {
+    const neo = { name: 'duplicate', snapshot: previewSnapshot('neo75cu') };
+    neo.snapshot.keys[1].id = neo.snapshot.keys[0].id;
+    expect(() => parseProfile(exportProfile(neo))).toThrow('无效');
+    const tofu = { name: 'duplicate', snapshot: previewSnapshot('tofu-pad') };
+    tofu.snapshot.behaviors[1].id = tofu.snapshot.behaviors[0].id;
+    expect(() => parseProfile(exportProfile(tofu))).toThrow('无效');
+  });
+  it('reserves the VIA macro sentinel byte before importing any bindings', () => {
+    const profile = { name: 'capacity', snapshot: previewSnapshot('neo75cu') };
+    profile.snapshot.macros[0] = Array(
+      profile.snapshot.macroBufferSize - profile.snapshot.macros.length,
+    ).fill(65);
+    expect(() => parseProfile(exportProfile(profile))).toThrow('无效');
+    profile.snapshot.macros[0].pop();
+    expect(parseProfile(exportProfile(profile)).snapshot.macros[0]).toEqual(
+      profile.snapshot.macros[0],
+    );
+  });
 });
