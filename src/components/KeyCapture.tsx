@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Keyboard, X } from 'lucide-react';
-import { actionForInput, isModifier } from '../domain/keyboard-input';
+import { actionForInput, codeForInputEvent, isModifier } from '../domain/keyboard-input';
 import type { KeyAction } from '../domain/keycodes';
 import './KeyCapture.css';
 
@@ -45,16 +45,17 @@ export function KeyCapture({
     e.preventDefault();
     e.stopPropagation();
     if (e.repeat || disabled) return;
+    const code = codeForInputEvent(e);
     if (down) {
-      if (isModifier(e.code)) {
-        if (modifier.current && modifier.current !== e.code) rejected.current = true;
-        modifier.current = e.code;
+      if (isModifier(code)) {
+        if (modifier.current && modifier.current !== code) rejected.current = true;
+        modifier.current = code;
       } else if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
         rejected.current = true;
         setMessage('这里只录入单个按键。');
-      } else apply(e.code);
-    } else if (isModifier(e.code)) {
-      if (modifier.current === e.code && !rejected.current) apply(e.code);
+      } else apply(code);
+    } else if (isModifier(code)) {
+      if (modifier.current === code && !rejected.current) apply(code);
       if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
         modifier.current = null;
         rejected.current = false;

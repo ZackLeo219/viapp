@@ -169,7 +169,7 @@ test('tester starts on entry and keeps listening after clicking the page or the 
   await page.keyboard.press('e');
   await expect(page.locator('[data-test-code="KeyE"]')).toHaveAttribute('data-state', 'untested');
 });
-test('a Shift event with no location is visible and can be calibrated without affecting normal left Shift', async ({
+test('a Shift event with no location automatically lights right Shift and stays independent of left Shift', async ({
   page,
 }) => {
   const unknownShift = async (type: 'keydown' | 'keyup') =>
@@ -187,16 +187,15 @@ test('a Shift event with no location is visible and can be calibrated without af
       );
     }, type);
   await demo(page);
+  await page.evaluate(() => localStorage.setItem('viapp:tester-shift:neo75cu', 'Left'));
   await page.getByRole('button', { name: '按键测试', exact: true }).click();
   await unknownShift('keydown');
-  await expect(page.getByTestId('held-keys')).toContainText('Shift · 未定位');
-  for (const side of ['Left', 'Right'])
-    await expect(page.locator(`[data-test-code="Shift${side}"]`)).toHaveAttribute(
-      'data-state',
-      'untested',
-    );
+  await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-state', 'held');
+  await expect(page.locator('[data-test-code="ShiftLeft"]')).toHaveAttribute(
+    'data-state',
+    'untested',
+  );
   await unknownShift('keyup');
-  await page.getByRole('button', { name: '右 Shift', exact: true }).click();
   await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-count', '1');
   await expect(page.getByTestId('press-count')).toHaveText('1');
   await page.keyboard.down('ShiftLeft');
@@ -222,11 +221,6 @@ test('a Shift event with no location is visible and can be calibrated without af
   await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-state', 'held');
   await unknownShift('keyup');
   await expect(page.getByRole('group', { name: '定位 Shift', exact: true })).toHaveCount(0);
-  await page.getByText('测试说明', { exact: true }).click();
-  await page.getByRole('button', { name: '重置 Shift 定位并重新测试', exact: true }).click();
-  await unknownShift('keydown');
-  await expect(page.getByRole('group', { name: '定位 Shift', exact: true })).toBeVisible();
-  await unknownShift('keyup');
 });
 test('a device card disconnects independently without entering its workspace and can be reconnected', async ({
   page,
@@ -361,6 +355,38 @@ test('home keeps device settings private to the workspace and help lists support
   await expect(page.locator('.help-models')).toContainText('TOFU PAD');
   await expect(page.getByRole('heading', { name: 'Neo75 Cu', exact: true })).toHaveCount(0);
 });
+test('a serial open failure gives a recovery hint without claiming a connection or closing another owner', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const port = {
+      getInfo: () => ({ usbVendorId: 0x9d5b, usbProductId: 0x2566 }),
+      open: async () => {
+        throw new DOMException(
+          "Failed to execute 'open' on 'SerialPort': Failed to open serial port.",
+          'NetworkError',
+        );
+      },
+      close: async () => {
+        document.documentElement.dataset.closedForeignPort = '1';
+      },
+    };
+    const serial = Object.assign(new EventTarget(), {
+      getPorts: async () => [port],
+      requestPort: async () => port,
+    });
+    Object.defineProperty(navigator, 'serial', { value: serial, configurable: true });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('关闭其他驱动页面');
+  await expect(page.getByRole('alert')).not.toContainText('Failed to execute');
+  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await expect(page.locator('html')).not.toHaveAttribute('data-closed-foreign-port', '1');
+  await expect(page.getByTestId('connect-serial')).toBeEnabled();
+  await page.getByRole('button', { name: '关闭提示', exact: true }).click();
+  await page.getByTestId('connect-serial').click();
+  await expect(page.getByRole('alert')).toContainText('关闭其他驱动页面');
+});
 test('profiles belong to the selected keyboard and cannot import another model', async ({
   page,
 }) => {
@@ -434,4 +460,10 @@ test('key capture remaps a single key while rejecting unsupported chords without
   await page.keyboard.press('Escape');
   await expect(page.locator('.inspector-key')).toHaveText('Esc');
   await expect(page.getByRole('button', { name: '保存演示配置', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '录入按键', exact: true }).click();
+  for (const type of ['keydown', 'keyup'])
+    await page
+      .getByRole('group', { name: '录入目标按键' })
+      .dispatchEvent(type, { key: 'Shift', code: '', location: 0, shiftKey: type === 'keydown' });
+  await expect(page.locator('.inspector-key')).toHaveText('R Shift');
 });

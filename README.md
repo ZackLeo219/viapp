@@ -56,7 +56,7 @@ pnpm test:e2e    # 实际浏览器流程、移动布局和离线缓存测试
 
 进入测试页即可按键，点击空白处不影响测试。双按 Esc 或点击「暂停」退出捕获；切换窗口时暂停并释放高亮，返回后恢复。手动暂停或打开弹窗后需点击「继续测试」。支持 Win / Mac 键帽标识。
 
-少数输入环境会把 Shift 上报为没有左右位置信息的事件。遇到这种情况，页面显示定位选项：选择刚才按下的左 / 右 Shift 后，本机浏览器会记住该型号的选择；正常带有位置信息的事件仍按自身信息识别。可在「测试说明」中重置定位。此设置不会改写键盘。
+已兼容 Windows 下右 Shift 缺少位置编码的情况，无需手动定位。优先读取按键编码和左右位置；仅收到通用 `Shift` 时采用右 Shift 兼容规则，与 [装备前线](https://www.zfrontier.com/lab/keyboardTester) 一致。「录入按键」使用同一规则。
 
 ![可视化按键测试](artifacts/keyboard-tester.png)
 
@@ -113,7 +113,7 @@ node --experimental-websocket scripts/hardware-ui-smoke.mjs
 
 2026-10-26 已在 Windows Chrome 和两块原装 PCB 上完成 USB 读写验证：Neo75 Cu 为 VIA 12、81 个物理键、4 层、16 个宏槽；TOFU PAD 为 ZMK Studio、18 个物理键、2 层。两台都通过改键、提交、读回与完整配置恢复检查，Neo 同时通过宏缓冲区写入与恢复。原配置备份和包含设备身份的测试结果仅保留在本地，不提交仓库。
 
-交付检查通过：54 项单元测试、17 项浏览器流程测试、真实双设备授权、刷新后自动重连与草稿隔离、GitHub Pages `/viapp/` 子目录及离线缓存、Windows 和 Linux 离线启动器。macOS ARM64 启动器已交叉编译，尚未在 macOS 真机上运行。可使用 `pnpm test:package` 在对应系统复验启动包。
+交付检查通过：60 项单元测试、18 项浏览器流程测试、真实双设备授权、刷新后自动重连、草稿隔离和设备卡片独立断开、GitHub Pages `/viapp/` 子目录及离线缓存、Windows 和 Linux 离线启动器。macOS ARM64 启动器已交叉编译，尚未在 macOS 真机上运行。可使用 `pnpm test:package` 在对应系统复验启动包。
 
 ## 界面设计
 

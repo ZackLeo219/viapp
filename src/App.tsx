@@ -340,11 +340,7 @@ export default function App() {
           {s.page === 'macros' && <MacrosPage />}
           {s.page === 'profiles' && inWorkspace && <ProfilesPage key={s.model} />}
           {s.page === 'test' && inWorkspace && (
-            <TesterPage
-              key={s.model}
-              model={s.model}
-              suspended={help || review || connectionDialog !== null}
-            />
+            <TesterPage key={s.model} suspended={help || review || connectionDialog !== null} />
           )}
           {inWorkspace && (
             <footer className="workspace-footer">

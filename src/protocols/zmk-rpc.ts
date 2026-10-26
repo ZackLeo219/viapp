@@ -14,6 +14,7 @@ export interface ByteTransport {
 export class ZmkRpc {
   private nextId = 1;
   private closed = false;
+  private closing?: Promise<void>;
   private chain: Promise<unknown> = Promise.resolve();
   private pending = new Map<
     number,
@@ -92,34 +93,50 @@ export class ZmkRpc {
     this.chain = task.catch(() => undefined);
     return task;
   }
-  async close(reason = '连接已关闭。') {
-    if (this.closed) return;
+  close(reason = '连接已关闭。'): Promise<void> {
+    if (this.closing) return this.closing;
     this.closed = true;
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
       p.reject(new Error(reason));
     }
     this.pending.clear();
-    await this.reader.cancel().catch(() => undefined);
-    await this.loop.catch(() => undefined);
-    await this.transport.close().catch(() => undefined);
+    this.closing = (async () => {
+      await this.reader.cancel().catch(() => undefined);
+      await this.loop.catch(() => undefined);
+      await this.transport.close().catch(() => undefined);
+    })();
+    return this.closing;
   }
 }
 
 export async function serialTransport(port: SerialPort): Promise<ByteTransport> {
-  await port.open({ baudRate: 115200, bufferSize: 65536 });
+  try {
+    await port.open({ baudRate: 115200, bufferSize: 65536 });
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === 'InvalidStateError')
+      throw new Error('此页面的串口连接尚未释放，请关闭此页后重新打开。', { cause });
+    if (cause instanceof DOMException && cause.name === 'NetworkError')
+      throw new Error(
+        '无法打开键盘串口。请关闭其他驱动页面或串口工具后重连；仍失败时重新插拔 USB。',
+        { cause },
+      );
+    throw cause;
+  }
   try {
     await port.setSignals({ dataTerminalReady: true });
     if (!port.readable || !port.writable) throw new Error('USB 串口没有提供读写通道。');
     const writer = port.writable.getWriter();
+    let closing: Promise<void> | undefined;
     return {
       read: port.readable,
       write: (data) => writer.write(data),
-      close: async () => {
-        await writer.close().catch(() => undefined);
-        writer.releaseLock();
-        await port.close();
-      },
+      close: () =>
+        (closing ??= (async () => {
+          await writer.close().catch(() => undefined);
+          writer.releaseLock();
+          await port.close();
+        })()),
     };
   } catch (e) {
     await port.close().catch(() => undefined);

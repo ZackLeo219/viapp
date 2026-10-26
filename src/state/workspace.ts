@@ -168,16 +168,22 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     });
     let candidate: Driver | undefined;
     try {
+      let access = options.access;
+      const stale = previous?.connection === 'offline' ? drivers.get(model) : undefined;
+      if (stale) {
+        // Obtain permission in the click before awaiting teardown. An offline
+        // driver's close may still be releasing its exclusive serial handle.
+        if (!demo && !access)
+          access = await requestDeviceAccess(model === 'neo75cu' ? 'hid' : 'serial');
+        await stale.close();
+        drivers.delete(model);
+      }
       // requestDevice/requestPort must run directly from the user's click, before any unrelated await.
       const opening = demo
         ? Promise.resolve(new DemoDriver(model))
         : model === 'neo75cu'
-          ? ViaDriver.connect(
-              options.access?.transport === 'hid' ? options.access.device : undefined,
-            )
-          : ZmkDriver.connect(
-              options.access?.transport === 'serial' ? options.access.port : undefined,
-            );
+          ? ViaDriver.connect(access?.transport === 'hid' ? access.device : undefined)
+          : ZmkDriver.connect(access?.transport === 'serial' ? access.port : undefined);
       candidate = await opening;
       set({ progress: '读取原厂配置' });
       const snapshot = await candidate.read();

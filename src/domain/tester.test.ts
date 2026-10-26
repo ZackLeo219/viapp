@@ -4,9 +4,9 @@ import {
   testerReducer as reduce,
   TESTER_LAYOUTS,
   testKeyLabel,
-  testEventCode,
   type TesterState,
 } from './tester';
+import { codeForInputEvent as testEventCode } from './keyboard-input';
 
 const start = () => reduce(freshTester(), { type: 'start' });
 const down = (s: TesterState, code: string, time = 100, repeat = false) =>
@@ -14,33 +14,26 @@ const down = (s: TesterState, code: string, time = 100, repeat = false) =>
 const up = (s: TesterState, code: string) => reduce(s, { type: 'up', code });
 
 describe('browser keyboard testing', () => {
-  it('uses code first, then an explicit modifier location, without guessing an unknown Shift side', () => {
-    expect(testEventCode({ code: 'ShiftLeft', key: 'Shift', location: 1 }, 'Right')).toBe(
-      'ShiftLeft',
-    );
+  it('prefers explicit codes and locations, and automatically handles Windows right Shift without a code', () => {
+    expect(testEventCode({ code: 'ShiftLeft', key: 'Shift', location: 1 })).toBe('ShiftLeft');
+    expect(testEventCode({ code: '', key: 'Shift', location: 1 })).toBe('ShiftLeft');
     expect(testEventCode({ code: '', key: 'Shift', location: 2 })).toBe('ShiftRight');
     expect(testEventCode({ code: 'Unidentified', key: 'Control', location: 1 })).toBe(
       'ControlLeft',
     );
-    expect(testEventCode({ code: '', key: 'Shift', location: 0 })).toBe('ShiftUnknown');
-    expect(testEventCode({ code: '', key: 'Shift', location: 0 }, 'Right')).toBe('ShiftRight');
+    expect(testEventCode({ code: '', key: 'Shift', location: 0 })).toBe('ShiftRight');
+    expect(testEventCode({ code: 'Unidentified', key: 'Shift', location: 0 })).toBe('ShiftRight');
+    expect(testEventCode({ code: 'Shift', key: 'Shift', location: 0 })).toBe('ShiftRight');
     expect(testEventCode({ code: '', key: 'Process', location: 0 })).toBe('');
-    expect(testEventCode({ code: 'Digit1', key: '!', location: 0 }, 'Right')).toBe('Digit1');
+    expect(testEventCode({ code: 'Digit1', key: '!', location: 0 })).toBe('Digit1');
   });
-  it('moves unknown Shift results to the chosen side without adding presses or losing the held state', () => {
-    const before = down(down(start(), 'ShiftLeft'), 'ShiftUnknown');
-    const identified = reduce(before, { type: 'identifyShift', side: 'Right' });
-    expect(identified.counts).toEqual({ ShiftLeft: 1, ShiftRight: 1 });
-    expect(identified.total).toBe(2);
-    expect(identified.held).toEqual(['ShiftLeft', 'ShiftRight']);
-    expect(identified.recent).toEqual(['ShiftRight', 'ShiftLeft']);
-    expect(up(identified, 'ShiftRight').held).toEqual(['ShiftLeft']);
-    const merged = reduce(down(up(identified, 'ShiftRight'), 'ShiftUnknown'), {
-      type: 'identifyShift',
-      side: 'Right',
-    });
-    expect(merged.counts.ShiftRight).toBe(2);
-    expect(merged.total).toBe(3);
+  it('keeps a normal left Shift independent from a right Shift without a code', () => {
+    const right = testEventCode({ code: '', key: 'Shift', location: 0 });
+    const both = down(down(start(), 'ShiftLeft'), right);
+    expect(both.counts).toEqual({ ShiftLeft: 1, ShiftRight: 1 });
+    expect(both.held).toEqual(['ShiftLeft', 'ShiftRight']);
+    expect(up(both, right).held).toEqual(['ShiftLeft']);
+    expect(up(up(both, right), 'ShiftLeft').held).toEqual([]);
   });
   it('counts distinct presses, ignores repeats, and retains tested keys after release', () => {
     let state = down(start(), 'KeyA');

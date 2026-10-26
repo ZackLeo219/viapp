@@ -167,6 +167,30 @@ describe('device center and independent sessions', () => {
       'draft',
     );
   });
+  it('waits for an offline serial driver to release its handle before opening its replacement', async () => {
+    const old = new HardwareFixture('tofu-pad');
+    const next = new HardwareFixture('tofu-pad');
+    mocks.tofu.mockResolvedValueOnce(old).mockResolvedValueOnce(next);
+    await state().connect('tofu-pad');
+    old.onDisconnect?.('USB error');
+    let release!: () => void;
+    const close = vi.spyOn(old, 'close').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const reconnect = state().connect('tofu-pad', false, {
+      access: { model: 'tofu-pad', transport: 'serial', port: {} as SerialPort },
+    });
+    expect(close).toHaveBeenCalledOnce();
+    expect(mocks.tofu).toHaveBeenCalledTimes(1);
+    release();
+    expect(await reconnect).toBe(true);
+    expect(mocks.tofu).toHaveBeenCalledTimes(2);
+    expect(state().connection).toBe('device');
+    expect(state().error).toBeNull();
+  });
   it('offline profile preview does not disconnect a different connected board', async () => {
     mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
     await state().connect('neo75cu');

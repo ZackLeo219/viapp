@@ -5,32 +5,21 @@ import {
   testerReducer,
   TESTER_LAYOUTS,
   testKeyLabel,
-  testEventCode,
   type KeyLegends,
-  type ShiftSide,
   type TesterLayoutId,
 } from '../domain/tester';
-import type { ModelId } from '../domain/types';
+import { codeForInputEvent } from '../domain/keyboard-input';
 import './TesterPage.css';
 
 type Locks = Record<'CapsLock' | 'NumLock' | 'ScrollLock', boolean | null>;
 const unknownLocks: Locks = { CapsLock: null, NumLock: null, ScrollLock: null };
 const unit = 50;
-export function TesterPage({ model, suspended = false }: { model: ModelId; suspended?: boolean }) {
+export function TesterPage({ suspended = false }: { suspended?: boolean }) {
   const [state, dispatch] = useReducer(testerReducer, undefined, freshTester);
   const [layoutId, setLayoutId] = useState<TesterLayoutId>('full');
   const [legends, setLegends] = useState<KeyLegends>('win');
   const [showCounts, setShowCounts] = useState(false);
   const [locks, setLocks] = useState<Locks>(unknownLocks);
-  const preferenceKey = `viapp:tester-shift:${model}`;
-  const [shiftSide, setShiftSide] = useState<ShiftSide | null>(() => {
-    try {
-      const saved = localStorage.getItem(preferenceKey);
-      return saved === 'Left' || saved === 'Right' ? saved : null;
-    } catch {
-      return null;
-    }
-  });
   const stage = useRef<HTMLDivElement>(null);
   const resumeOnFocus = useRef(false);
   const layout = TESTER_LAYOUTS.find((l) => l.id === layoutId)!;
@@ -69,7 +58,7 @@ export function TesterPage({ model, suspended = false }: { model: ModelId; suspe
     };
     const handleKey = (e: KeyboardEvent) => {
       if (!state.listening || suspended) return;
-      const code = testEventCode(e, shiftSide);
+      const code = codeForInputEvent(e);
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) {
         if (e.type === 'keyup') dispatch({ type: 'up', code });
@@ -97,22 +86,10 @@ export function TesterPage({ model, suspended = false }: { model: ModelId; suspe
       window.removeEventListener('keydown', handleKey, true);
       window.removeEventListener('keyup', handleKey, true);
     };
-  }, [state.listening, suspended, shiftSide]);
+  }, [state.listening, suspended]);
   useEffect(() => {
     if (!state.listening) setLocks(unknownLocks);
   }, [state.listening]);
-  const identifyShift = (side: ShiftSide | null) => {
-    setShiftSide(side);
-    try {
-      if (side) localStorage.setItem(preferenceKey, side);
-      else localStorage.removeItem(preferenceKey);
-    } catch {
-      // Testing still works when storage is unavailable; calibration lasts for this visit.
-    }
-    if (side) dispatch({ type: 'identifyShift', side });
-    else dispatch({ type: 'reset' });
-    stage.current?.focus({ preventScroll: true });
-  };
   return (
     <section className="tester">
       <div className="panel tester-panel">
@@ -202,17 +179,6 @@ export function TesterPage({ model, suspended = false }: { model: ModelId; suspe
             </button>
           </div>
         </div>
-        {!shiftSide && state.counts.ShiftUnknown > 0 && (
-          <div className="tester-identify" role="group" aria-label="定位 Shift">
-            <span>检测到 Shift，请选择刚才按下的位置</span>
-            <button className="button" onClick={() => identifyShift('Left')}>
-              左 Shift
-            </button>
-            <button className="button" onClick={() => identifyShift('Right')}>
-              右 Shift
-            </button>
-          </div>
-        )}
         <div
           ref={stage}
           className={`tester-stage ${state.listening ? 'listening' : ''}`}
@@ -372,17 +338,6 @@ export function TesterPage({ model, suspended = false }: { model: ModelId; suspe
           按键按输出键值显示，不区分输入设备。Fn
           和部分系统快捷键无法检测；切换窗口会暂停测试。此页不用于测量硬件延迟。
         </p>
-        {shiftSide && (
-          <button
-            className="tester-reset-location"
-            onClick={() => {
-              identifyShift(null);
-              start();
-            }}
-          >
-            重置 Shift 定位并重新测试
-          </button>
-        )}
       </details>
     </section>
   );

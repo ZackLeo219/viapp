@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Request, Response } from '@zmkfirmware/zmk-studio-ts-client/studio';
 import { FrameDecoder, encodeFrame } from './framing';
-import { ZmkRpc, type ByteTransport } from './zmk-rpc';
+import { ZmkRpc, serialTransport, type ByteTransport } from './zmk-rpc';
 
 function fakeRpc(timeout = 1000) {
   let controller!: ReadableStreamDefaultController<Uint8Array>;
@@ -27,6 +27,28 @@ function fakeRpc(timeout = 1000) {
   };
 }
 describe('ZMK RPC lifecycle', () => {
+  it('every close caller waits until the underlying serial connection has finished closing', async () => {
+    const fake = fakeRpc();
+    let release!: () => void;
+    vi.mocked(fake.transport.close).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const first = fake.rpc.close();
+    const second = fake.rpc.close();
+    expect(second).toBe(first);
+    let completed = false;
+    void second.then(() => {
+      completed = true;
+    });
+    await vi.waitFor(() => expect(fake.transport.close).toHaveBeenCalledOnce());
+    expect(completed).toBe(false);
+    release();
+    await Promise.all([first, second]);
+    expect(completed).toBe(true);
+  });
   it('handles a successful zero-valued enum and idle notifications', async () => {
     const fake = fakeRpc();
     const notification = vi.fn();
@@ -87,5 +109,64 @@ describe('ZMK RPC lifecycle', () => {
     expect((await ra).core?.getLockState).toBe(1);
     expect((await rb).core?.getLockState).toBe(0);
     await Promise.all([a.rpc.close(), b.rpc.close()]);
+  });
+});
+
+describe('serial port ownership and errors', () => {
+  function fakePort() {
+    return {
+      open: vi.fn(async () => {}),
+      setSignals: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      readable: new ReadableStream<Uint8Array>(),
+      writable: new WritableStream<Uint8Array>(),
+    };
+  }
+  it('explains a failed open without closing a port it did not acquire', async () => {
+    const port = fakePort();
+    const cause = new DOMException(
+      "Failed to execute 'open' on 'SerialPort': Failed to open serial port.",
+      'NetworkError',
+    );
+    port.open.mockRejectedValue(cause);
+    const error = await serialTransport(port as unknown as SerialPort).catch((e: Error) => e);
+    expect(error).toMatchObject({ message: expect.stringContaining('关闭其他驱动页面'), cause });
+    expect(port.close).not.toHaveBeenCalled();
+    expect(port.setSignals).not.toHaveBeenCalled();
+  });
+  it('distinguishes an already-open port from a failed open', async () => {
+    const port = fakePort();
+    port.open.mockRejectedValue(new DOMException('Already open', 'InvalidStateError'));
+    await expect(serialTransport(port as unknown as SerialPort)).rejects.toThrow(
+      '此页面的串口连接尚未释放',
+    );
+    expect(port.close).not.toHaveBeenCalled();
+  });
+  it('releases a successfully opened port when signal configuration fails', async () => {
+    const port = fakePort();
+    port.setSignals.mockRejectedValue(new Error('Device removed'));
+    await expect(serialTransport(port as unknown as SerialPort)).rejects.toThrow('Device removed');
+    expect(port.close).toHaveBeenCalledOnce();
+  });
+  it('releases the writer before closing the port and waits for one shared close operation', async () => {
+    const port = fakePort();
+    let release!: () => void;
+    port.close.mockImplementation(() => {
+      expect(port.writable.locked).toBe(false);
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    const transport = await serialTransport(port as unknown as SerialPort);
+    expect(port.writable.locked).toBe(true);
+    await transport.write(new Uint8Array([1, 2, 3]));
+    const first = transport.close(),
+      second = transport.close();
+    expect(second).toBe(first);
+    await vi.waitFor(() => expect(port.close).toHaveBeenCalledOnce());
+    release();
+    await first;
+    await transport.close();
+    expect(port.close).toHaveBeenCalledOnce();
   });
 });

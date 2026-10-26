@@ -1,5 +1,17 @@
 import type { KeyAction } from './keycodes';
 
+// Some Windows input paths omit right Shift's code and location. Match the
+// established tester fallback for key="Shift"; explicit code/location wins.
+export function codeForInputEvent(event: Pick<KeyboardEvent, 'code' | 'key' | 'location'>): string {
+  if (event.code && event.code !== 'Unidentified' && event.code !== 'Shift') return event.code;
+  if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) {
+    if (event.location === 1) return `${event.key}Left`;
+    if (event.location === 2) return `${event.key}Right`;
+    if (event.key === 'Shift') return 'ShiftRight';
+  }
+  return '';
+}
+
 const codes: Record<string, number> = {
   Enter: 40,
   Escape: 41,
