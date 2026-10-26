@@ -1,0 +1,14 @@
+node_modules/
+dist/
+release/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.sites-runtime/
+.env
+.env.local
+.DS_Store
+scripts/launcher/site/
+.hardware-test-results/
+.pages-test/

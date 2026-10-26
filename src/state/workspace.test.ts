@@ -1,0 +1,136 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DemoDriver } from '../domain/demo';
+import { isDirty, useWorkspace } from './workspace';
+
+const mocks = vi.hoisted(() => ({ neo: vi.fn(), tofu: vi.fn(), backup: vi.fn() }));
+vi.mock('../protocols/via', () => ({ ViaDriver: { connect: mocks.neo } }));
+vi.mock('../protocols/zmk', () => ({ ZmkDriver: { connect: mocks.tofu } }));
+vi.mock('./database', () => ({ saveProfile: mocks.backup }));
+class HardwareFixture extends DemoDriver {
+  onDisconnect?: (reason: string) => void;
+  async read() {
+    const result = await super.read();
+    result.identity = `TEST:${this.model}`;
+    return result;
+  }
+}
+const state = () => useWorkspace.getState();
+beforeEach(() => {
+  useWorkspace.setState(useWorkspace.getInitialState(), true);
+  vi.clearAllMocks();
+  mocks.backup.mockResolvedValue(undefined);
+});
+afterEach(async () => {
+  for (const model of ['neo75cu', 'tofu-pad'] as const) {
+    state().openDevice(model);
+    await state().disconnect();
+  }
+});
+
+describe('device center and independent sessions', () => {
+  it('shows configuration only after a successful connection and explicit device selection', async () => {
+    expect(state().page).toBe('devices');
+    expect(state().sessions).toEqual({});
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    expect(await state().connect('neo75cu')).toBe(true);
+    expect(state().page).toBe('devices');
+    expect(state().workspaceOpen).toBe(false);
+    expect(state().sessions.neo75cu?.connection).toBe('device');
+    state().setPage('profiles');
+    expect(state().workspaceOpen).toBe(false);
+    state().openDevice('neo75cu');
+    expect(state().page).toBe('keymap');
+    expect(state().workspaceOpen).toBe(true);
+  });
+  it('keeps drafts and sends writes to the selected device only', async () => {
+    const neo = new HardwareFixture('neo75cu'),
+      tofu = new HardwareFixture('tofu-pad');
+    mocks.neo.mockResolvedValue(neo);
+    mocks.tofu.mockResolvedValue(tofu);
+    await state().connect('neo75cu');
+    state().openDevice('neo75cu');
+    state().edit(0, { type: 'via', code: 4 });
+    await state().connect('tofu-pad');
+    state().openDevice('tofu-pad');
+    state().edit(1, { type: 'zmk', behaviorId: 1, param1: 0x70005, param2: 0 });
+    state().openDevice('neo75cu');
+    expect(isDirty(state())).toBe(true);
+    await state().apply();
+    expect(state().error).toBeNull();
+    expect((await neo.read()).layers[0].bindings[0]).toEqual({ type: 'via', code: 4 });
+    expect((await tofu.read()).layers[0].bindings[1]).not.toEqual({
+      type: 'zmk',
+      behaviorId: 1,
+      param1: 0x70005,
+      param2: 0,
+    });
+    state().openDevice('tofu-pad');
+    expect(isDirty(state())).toBe(true);
+    expect(state().draft.layers[0].bindings[1]).toEqual({
+      type: 'zmk',
+      behaviorId: 1,
+      param1: 0x70005,
+      param2: 0,
+    });
+  });
+  it('a cancelled second connection leaves the first device and its draft intact', async () => {
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    mocks.tofu.mockRejectedValue(new DOMException('Cancelled', 'NotFoundError'));
+    await state().connect('neo75cu');
+    state().openDevice('neo75cu');
+    state().edit(0, { type: 'via', code: 5 });
+    expect(await state().connect('tofu-pad')).toBe(false);
+    expect(state().connection).toBe('device');
+    expect(state().model).toBe('neo75cu');
+    expect(isDirty(state())).toBe(true);
+    expect(state().sessions['tofu-pad']).toBeUndefined();
+  });
+  it('disconnecting an inactive device does not mark the active one as offline', async () => {
+    const neo = new HardwareFixture('neo75cu');
+    mocks.neo.mockResolvedValue(neo);
+    mocks.tofu.mockResolvedValue(new HardwareFixture('tofu-pad'));
+    await state().connect('neo75cu');
+    await state().connect('tofu-pad');
+    neo.onDisconnect?.('Cable disconnected');
+    expect(state().connection).toBe('device');
+    expect(state().sessions.neo75cu?.connection).toBe('offline');
+  });
+  it('reconnecting the same unchanged device keeps a draft and archives it before use', async () => {
+    const neo = new HardwareFixture('neo75cu');
+    mocks.neo.mockResolvedValue(neo);
+    await state().connect('neo75cu');
+    state().edit(0, { type: 'via', code: 6 });
+    await state().disconnect();
+    await state().connect('neo75cu');
+    expect(isDirty(state())).toBe(true);
+    expect(state().draft.layers[0].bindings[0]).toEqual({ type: 'via', code: 6 });
+    expect(mocks.backup).toHaveBeenCalledWith(
+      expect.stringContaining('重连前草稿'),
+      expect.anything(),
+      'draft',
+    );
+  });
+  it('offline profile preview does not disconnect a different connected board', async () => {
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    await state().connect('neo75cu');
+    state().openDevice('neo75cu');
+    state().edit(0, { type: 'via', code: 8 });
+    state().loadProfile(await new HardwareFixture('tofu-pad').read());
+    expect(state().model).toBe('tofu-pad');
+    expect(state().connection).toBe('offline');
+    expect(state().sessions.neo75cu?.connection).toBe('device');
+    state().openDevice('neo75cu');
+    expect(state().draft.layers[0].bindings[0]).toEqual({ type: 'via', code: 8 });
+  });
+  it('replacing an explicit demo with a real connection reads fresh hardware data', async () => {
+    await state().connect('neo75cu', true);
+    state().edit(0, { type: 'via', code: 9 });
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    expect(await state().connect('neo75cu')).toBe(true);
+    expect(state().connection).toBe('device');
+    expect(state().workspaceOpen).toBe(false);
+    expect(state().draft.identity).toBe('TEST:neo75cu');
+    expect(isDirty(state())).toBe(false);
+    expect(mocks.backup).toHaveBeenCalled();
+  });
+});

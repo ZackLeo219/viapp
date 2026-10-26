@@ -1,0 +1,12 @@
+node_modules
+dist
+release
+coverage
+test-results
+playwright-report
+.hardware-test-results
+.sites-runtime
+scripts/launcher/site
+pnpm-lock.yaml
+public/licenses.txt
+third_party/licenses
