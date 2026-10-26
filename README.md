@@ -1,6 +1,6 @@
 # VIAPP
 
-为 **Neo75 Cu 原装三模 PCB** 和 **TOFU PAD 原装双模 PCB** 制作的网页键盘工作台。React、TypeScript、Vite；浏览器直接连接 USB 设备，无业务后端、账号系统或云端按键存储。
+浏览器中的键盘配置工具，支持改键、宏、方案管理和按键测试。使用 React、TypeScript、Vite，直接连接 USB 设备，无需服务器或账号。当前支持的原装 PCB 见下表。
 
 [打开网页驱动](https://zackleo219.github.io/viapp/) · [下载 Windows 离线版](https://github.com/ZackLeo219/viapp/releases/latest/download/viapp-windows-x64.exe) · [所有下载](https://github.com/ZackLeo219/viapp/releases)
 
@@ -40,11 +40,21 @@ pnpm test:e2e    # 实际浏览器流程、移动布局和离线缓存测试
 2. 点击「连接键盘」，选择原装型号，再在浏览器弹窗选择对应设备。请关闭 VIA / ZMK Studio 等同时占用设备的应用。
 3. 成功读取后，首页才出现设备卡片。点击卡片进入该型号的工作台：点击按键，在右侧选择功能，顶部切换层。两台键盘可同时连接，各自保留草稿和撤销记录。
 4. 点击「保存到键盘」，检查差异。应用会重新读取设备以检测外部修改，保存本地备份，执行写入，最后读回核对。
-5. 在「我的方案」中管理方案和自动备份，可导出、导入 JSON。载入方案只改变草稿，再次确认保存才写入键盘。
+5. 进入具体设备后，在「我的方案」中管理该型号的方案和自动备份，可导出、导入 JSON。载入方案只改变草稿，再次确认保存才写入键盘。方案保存在浏览器，不代表设备支持多个板载配置槽。
+
+![已连接设备](artifacts/connected-devices.png)
 
 「体验演示」是独立入口，使用明确标注的模拟设备，不会操作真实键盘，也不会在首页冒充已连接的设备。演示键位不是出厂备份。
 
-按键测试基于浏览器 `KeyboardEvent`，不能区分输入来自哪台键盘，不是矩阵扫描或硬件延迟测试。Fn 等固件内部按键可能不产生浏览器事件。
+## 按键测试
+
+无需连接配置接口即可使用。支持标准 104 键、87 键、75% 和数字键盘配列；按住和测试过的键分别高亮，可查看按键次数、同时按下数量和最近按键。切换配列保留记录，点击重测清空。
+
+进入测试页即可按键，双按 Esc 或点击「暂停」退出捕获；切换窗口、打开弹窗时自动暂停并释放高亮。支持 Win / Mac 键帽标识。
+
+![可视化按键测试](artifacts/keyboard-tester.png)
+
+测试基于浏览器 `KeyboardEvent`，按改键后的输出键值显示，不能区分输入设备。Fn 和部分系统快捷键无法检测，也不用于测量硬件延迟。
 
 ## 发布到 GitHub Pages
 
@@ -97,11 +107,11 @@ node --experimental-websocket scripts/hardware-ui-smoke.mjs
 
 2026-10-26 已在 Windows Chrome 和两块原装 PCB 上完成 USB 读写验证：Neo75 Cu 为 VIA 12、81 个物理键、4 层、16 个宏槽；TOFU PAD 为 ZMK Studio、18 个物理键、2 层。两台都通过改键、提交、读回与完整配置恢复检查，Neo 同时通过宏缓冲区写入与恢复。原配置备份和包含设备身份的测试结果仅保留在本地，不提交仓库。
 
-交付检查通过：32 项单元测试、9 项浏览器流程测试、真实双设备页面连接与草稿隔离、GitHub Pages `/viapp/` 子目录及离线缓存、Windows 和 Linux 离线启动器。macOS ARM64 启动器已交叉编译，尚未在 macOS 真机上运行。可使用 `pnpm test:package` 在对应系统复验启动包。
+交付检查通过：40 项单元测试、13 项浏览器流程测试、真实双设备页面连接与草稿隔离、GitHub Pages `/viapp/` 子目录及离线缓存、Windows 和 Linux 离线启动器。macOS ARM64 启动器已交叉编译，尚未在 macOS 真机上运行。可使用 `pnpm test:package` 在对应系统复验启动包。
 
 ## 界面设计
 
-使用暖白、深绿与柔和橄榄色，主页遵循「连接 → 真实设备卡片 → 配置工作台」。参考 [DesignPrompts](https://designprompts.dev/) 中 Swiss Minimalist 的网格和 Botanical 的低饱和配色；界面、图标组合和键盘 SVG 均独立实现，没有复制该站的图片或组件。全部字体使用系统字体，运行时不依赖外部字体服务。
+使用暖白、深绿与柔和橄榄色，主页遵循「连接 → 真实设备卡片 → 配置工作台」。首页参考 [ATK HUB](https://hub.atk.pro/) 的设备入口结构；按键测试参考 [zFrontier](https://www.zfrontier.com/lab/keyboardTester) 与 [SPCBOX](https://tester.spcbox.com/) 的键盘可视化。配色参考 [DesignPrompts](https://designprompts.dev/) 中 Swiss Minimalist 的网格和 Botanical 的低饱和配色；界面、图标组合和键盘 SVG 均独立实现，没有复制该站的图片或组件。全部字体使用系统字体，运行时不依赖外部字体服务。
 
 ## 结构
 
@@ -109,7 +119,7 @@ node --experimental-websocket scripts/hardware-ui-smoke.mjs
 src/protocols/   VIA Raw HID、ZMK RPC、串口帧与连接生命周期
 src/domain/      配列、键码、宏、配置校验和写入事务
 src/state/       工作台状态和本地方案库
-src/components/ 可视化键盘与可访问弹窗
+src/components/ 设备动画、键盘编辑器、可视化测试与弹窗
 tests/          Playwright 用户流程测试
 scripts/        本地服务、离线打包、真机验收
 ```

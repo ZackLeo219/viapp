@@ -14,7 +14,7 @@ import { saveProfile } from './database';
 import { ViaDriver } from '../protocols/via';
 import { ZmkDriver } from '../protocols/zmk';
 
-type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test' | 'diagnostics';
+type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test';
 interface DeviceSession {
   model: ModelId;
   baseline: DeviceSnapshot;
@@ -101,6 +101,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   progress: '',
   setPage: (page) => {
     if (get().operation !== 'idle') return;
+    if (!get().workspaceOpen && ['keymap', 'macros', 'profiles'].includes(page)) return;
     if (page === 'devices') {
       rememberCurrent();
       set({ workspaceOpen: false });

@@ -72,23 +72,71 @@ test('TOFU uses its own behavior model and does not offer unsupported macro crea
   await demo(page, 'TOFU PAD');
   await expect(page.getByRole('group', { name: 'TOFU PAD 基础层可视化键盘' })).toBeVisible();
   await page.getByRole('button', { name: '宏编辑器', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '使用固件已有的行为' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前固件不支持编辑宏' })).toBeVisible();
 });
-test('keyboard tester releases keys and exits on Escape', async ({ page }) => {
+test('visual keyboard tracks presses, releases and distinct left/right keys', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '按键测试', exact: true }).click();
-  await page.getByRole('button', { name: '开始测试', exact: true }).click();
+  await expect(page.locator('.tester-key')).toHaveCount(104);
   await page.keyboard.down('a');
-  await expect(page.locator('.held-keys')).toContainText('KeyA');
+  await expect(page.locator('[data-test-code="KeyA"]')).toHaveAttribute('data-state', 'held');
+  await page.keyboard.down('a');
+  await expect(page.getByTestId('press-count')).toHaveText('1');
   await page.keyboard.up('a');
-  await expect(page.locator('.held-keys kbd')).toHaveCount(0);
+  await expect(page.locator('[data-test-code="KeyA"]')).toHaveAttribute('data-state', 'tested');
+  await page.keyboard.down('ShiftLeft');
+  await page.keyboard.down('ShiftRight');
+  await expect(page.getByTestId('held-count')).toHaveText('2');
+  await expect(page.locator('[data-test-code="ShiftLeft"]')).toHaveAttribute('data-state', 'held');
+  await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-state', 'held');
+  await page.keyboard.up('ShiftLeft');
+  await page.keyboard.up('ShiftRight');
+  await page.keyboard.press('NumpadEnter');
+  await expect(page.locator('[data-test-code="NumpadEnter"]')).toHaveAttribute(
+    'data-state',
+    'tested',
+  );
+  await expect(page.locator('[data-test-code="Enter"]')).toHaveAttribute('data-state', 'untested');
+  await page.getByLabel('测试配列').selectOption('numpad');
+  await expect(page.locator('.tester-key')).toHaveCount(17);
+  await expect(page.getByTestId('tested-count')).toHaveText('1 / 17');
+  await page.locator('[data-test-code="Numpad7"]').click();
+  await expect(page.locator('[data-test-code="Numpad7"]')).toHaveAttribute(
+    'data-state',
+    'untested',
+  );
+  await page.getByRole('button', { name: '重新测试' }).click();
+  await expect(page.getByTestId('press-count')).toHaveText('0');
+  await expect(page.getByTestId('tested-count')).toHaveText('0 / 17');
+});
+test('tester supports Escape, releases keys on blur and permits keyboard exit', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: '开始测试', exact: true })).toBeVisible();
+  await expect(page.locator('[data-test-code="Escape"]')).toHaveAttribute('data-state', 'tested');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: '继续测试', exact: true })).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('group', { name: '可视化按键测试', exact: true })).not.toBeFocused();
+  await page.getByRole('button', { name: '继续测试', exact: true }).click();
+  await page.keyboard.down('a');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(page.getByTestId('held-count')).toHaveText('0');
+  await expect(page.locator('[data-test-code="KeyA"]')).toHaveAttribute('data-state', 'tested');
+  await page.keyboard.up('a');
+  await page.getByRole('button', { name: '继续测试', exact: true }).click();
+  await page.getByRole('button', { name: '连接帮助', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.tester-stage')).not.toHaveClass(/listening/);
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+  await expect(page.getByRole('button', { name: '继续测试', exact: true })).toBeVisible();
 });
 test('mobile layout remains usable without horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '设备中心', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请连接设备', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -106,10 +154,10 @@ test('installed cache serves the application without network', async ({ page, co
     await navigator.serviceWorker.ready;
   });
   await page.reload();
-  await expect(page.getByRole('heading', { name: '设备中心', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请连接设备', exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('heading', { name: '设备中心', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '请连接设备', exact: true })).toBeVisible();
   await context.setOffline(false);
 });
 
@@ -142,7 +190,64 @@ test('device switching keeps separate drafts and tester shortcuts do not undo co
   await page.getByRole('button', { name: '继续 Neo75 Cu 演示' }).click();
   await expect(page.locator('.save-state')).toContainText('1 个按键');
   await page.getByRole('button', { name: '按键测试', exact: true }).click();
-  await page.getByRole('button', { name: '开始测试', exact: true }).click();
   await page.keyboard.press('Control+z');
   await expect(page.locator('.save-state')).toContainText('1 个按键');
+});
+
+test('home keeps device settings private to the workspace and help lists supported models', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('.sidebar')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '我的方案', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '连接诊断', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '连接帮助', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '目前支持的型号' })).toBeVisible();
+  await expect(page.locator('.help-models')).toContainText('Neo75 Cu');
+  await expect(page.locator('.help-models')).toContainText('TOFU PAD');
+  await expect(page.getByRole('heading', { name: 'Neo75 Cu', exact: true })).toHaveCount(0);
+});
+test('profiles belong to the selected keyboard and cannot import another model', async ({
+  page,
+}) => {
+  await demo(page);
+  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await page.getByRole('textbox', { name: '方案名称' }).fill('Neo only');
+  await page.getByRole('button', { name: '保存当前方案', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出 Neo only', exact: true }).click();
+  const profile = await download;
+  const path = await profile.path();
+  await page.getByLabel('返回设备中心', { exact: true }).click();
+  await page.getByRole('button', { name: '体验演示', exact: true }).click();
+  await page.getByRole('button', { name: '演示 TOFU PAD', exact: true }).click();
+  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await expect(page.locator('.profile-row')).toHaveCount(0);
+  await page.locator('input[type=file]').setInputFiles(path!);
+  await expect(page.getByRole('alert')).toContainText('此方案属于 Neo75 Cu');
+  await expect(page.locator('.profile-row')).toHaveCount(0);
+  await page.getByLabel('返回设备中心', { exact: true }).click();
+  await page.getByRole('button', { name: '继续 Neo75 Cu 演示' }).click();
+  await page.getByRole('button', { name: '我的方案', exact: true }).click();
+  await expect(page.locator('.profile-row')).toContainText('Neo only');
+});
+test('tester scales to mobile, keeps coverage across layouts and uses Mac legends', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Mac', exact: true }).click();
+  await expect(page.locator('[data-test-code="MetaLeft"]')).toContainText('⌘');
+  await page.keyboard.press('a');
+  for (const layout of ['compact', 'tkl', 'full']) {
+    await page.getByLabel('测试配列').selectOption(layout);
+    await expect(page.locator('[data-test-code="KeyA"]')).toHaveAttribute('data-state', 'tested');
+  }
+  await page.getByLabel('次数', { exact: true }).check();
+  await expect(page.locator('[data-test-code="KeyA"] .tester-key-count')).toHaveText('1');
+  await page.getByLabel('测试配列').selectOption('numpad');
+  const board = await page.locator('.tester-keyboard').boundingBox();
+  expect(board!.width).toBeLessThan(330);
 });

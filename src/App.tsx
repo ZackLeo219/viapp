@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   CircleHelp,
   Command,
-  Copy,
   FileJson,
   FolderHeart,
   History,
@@ -21,26 +20,25 @@ import {
   MonitorCheck,
   MousePointer2,
   Plus,
-  Radio,
   Redo2,
   RotateCcw,
   Search,
-  ShieldCheck,
-  SlidersHorizontal,
-  Terminal,
   Trash2,
   Undo2,
   Unplug,
-  Usb,
   WandSparkles,
   X,
 } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { Keyboard } from './components/Keyboard';
+import { TesterPage } from './components/TesterPage';
+import { IdleKeyboard } from './components/IdleKeyboard';
+import './components/DeviceHub.css';
+import { version } from '../package.json';
 import { Modal } from './components/Modal';
 import { useWorkspace, isDirty, hasUnsavedDrafts } from './state/workspace';
 import { actionsFor, bindingFor, labelFor, KEY_ACTIONS, type KeyAction } from './domain/keycodes';
-import { changesBetween, MODEL_NAMES, errorMessage, type ModelId } from './domain/types';
+import { changesBetween, MODEL_NAMES, type ModelId } from './domain/types';
 import { previewSnapshot } from './domain/demo';
 import { decodeMacro, encodeMacro, type MacroStep } from './domain/macros';
 import { exportProfile, parseProfile, type Profile } from './domain/profiles';
@@ -51,7 +49,6 @@ const navigation = [
   { id: 'macros', title: '宏编辑器', icon: Command },
   { id: 'profiles', title: '我的方案', icon: FolderHeart },
   { id: 'test', title: '按键测试', icon: MonitorCheck },
-  { id: 'diagnostics', title: '连接诊断', icon: SlidersHorizontal },
 ] as const;
 function download(name: string, contents: string) {
   const url = URL.createObjectURL(new Blob([contents], { type: 'application/json;charset=utf-8' }));
@@ -149,112 +146,129 @@ export default function App() {
     });
   };
   return (
-    <div className={`app-shell ${inWorkspace ? 'workspace-view' : 'hub-view'}`}>
+    <div
+      className={`app-shell ${inWorkspace ? 'workspace-view' : 'hub-view'} ${hub ? 'device-center-view' : ''}`}
+    >
       <a className="skip-link" href="#main">
         跳到主要内容
       </a>
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          aria-label="VIAPP 工作台"
-          onClick={(e) => {
-            e.preventDefault();
-            s.setPage('devices');
-          }}
-        >
-          <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
-          <span>
-            viapp<span className="brand-dot">.</span>
-          </span>
-          <span className="brand-tag">STUDIO</span>
-        </a>
-        <div className="sidebar-caption">YOUR KEYBOARD, YOUR WAY.</div>
-        <div className="nav-label">{inWorkspace ? s.draft.name : '工作台'}</div>
-        <nav aria-label="主导航">
-          <button
-            className={`nav-item ${hub ? 'active' : ''}`}
-            aria-label="设备中心"
-            onClick={() => s.setPage('devices')}
-            disabled={busy}
+      {inWorkspace && (
+        <aside className="sidebar">
+          <a
+            className="brand"
+            href="#"
+            aria-label="VIAPP 工作台"
+            onClick={(e) => {
+              e.preventDefault();
+              s.setPage('devices');
+            }}
           >
-            <LayoutGrid size={19} />
-            <span>设备中心</span>
-            {hub && <ChevronRight size={16} />}
-          </button>
-          {navigation
-            .filter((item) => inWorkspace || !['keymap', 'macros'].includes(item.id))
-            .map((item) => (
-              <button
-                key={item.id}
-                aria-label={item.title}
-                className={`nav-item ${s.page === item.id ? 'active' : ''}`}
-                onClick={() => s.setPage(item.id)}
-                disabled={busy}
-                aria-current={s.page === item.id ? 'page' : undefined}
-              >
-                <item.icon size={19} />
-                <span>{item.title}</span>
-                {item.id === s.page && <ChevronRight size={16} />}
-              </button>
-            ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="local-card">
-            <ShieldCheck size={23} />
-            <strong>设置，留在你手里。</strong>
-            <p>
-              设备直连浏览器
-              <br />
-              方案保存在本机
-            </p>
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
             <span>
-              <i /> LOCAL FIRST
+              viapp<span className="brand-dot">.</span>
             </span>
+          </a>
+          {inWorkspace && <div className="nav-label">{s.draft.name}</div>}
+          <nav aria-label="主导航">
+            <button
+              className={`nav-item ${hub ? 'active' : ''}`}
+              aria-label="设备中心"
+              onClick={() => s.setPage('devices')}
+              disabled={busy}
+            >
+              <LayoutGrid size={19} />
+              <span>设备中心</span>
+              {hub && <ChevronRight size={16} />}
+            </button>
+            {navigation
+              .filter((item) => inWorkspace || item.id === 'test')
+              .map((item) => (
+                <button
+                  key={item.id}
+                  aria-label={item.title}
+                  className={`nav-item ${s.page === item.id ? 'active' : ''}`}
+                  onClick={() => s.setPage(item.id)}
+                  disabled={busy}
+                  aria-current={s.page === item.id ? 'page' : undefined}
+                >
+                  <item.icon size={19} />
+                  <span>{item.title}</span>
+                  {item.id === s.page && <ChevronRight size={16} />}
+                </button>
+              ))}
+          </nav>
+          <div className="sidebar-bottom">
+            <button className="help-button" onClick={() => setHelp(true)}>
+              <CircleHelp size={17} />
+              连接帮助
+              <ArrowRight size={15} />
+            </button>
+            <div className="sidebar-version">
+              VIAPP <span>v{version}</span>
+            </div>
           </div>
-          <button className="help-button" onClick={() => setHelp(true)}>
-            <CircleHelp size={17} />
-            连接帮助与说明
-            <ArrowRight size={15} />
-          </button>
-          <div className="sidebar-version">
-            VIAPP STUDIO <span>v0.1.0</span>
-          </div>
-        </div>
-      </aside>
+        </aside>
+      )}
       <div className="main-shell">
         <header className="topbar">
-          <div className="breadcrumb">
-            <button onClick={() => s.setPage('devices')} disabled={busy}>
-              设备中心
-            </button>
-            {!hub && (
-              <>
-                <ChevronRight size={14} />
-                {inWorkspace && <span>{s.draft.name} / </span>}
-                <strong>{navigation.find((n) => n.id === s.page)?.title}</strong>
-              </>
-            )}
-          </div>
-          <div className="topbar-right">
-            <span className="local-indicator">
-              <ShieldCheck size={14} /> 本地运行
-            </span>
-            {inWorkspace ? (
-              <ConnectionBadge />
-            ) : (
-              <span className="connection-badge">
-                <span className="status-dot" />
-                {Object.values(s.sessions).filter((d) => d.connection === 'device').length}{' '}
-                台设备已连接
+          {!inWorkspace && (
+            <a
+              className="brand topbar-brand"
+              href="#"
+              aria-label="VIAPP 设备中心"
+              onClick={(e) => {
+                e.preventDefault();
+                s.setPage('devices');
+              }}
+            >
+              <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
+              <span>
+                viapp<span className="brand-dot">.</span>
               </span>
+            </a>
+          )}
+          {inWorkspace && (
+            <div className="breadcrumb">
+              <button onClick={() => s.setPage('devices')} disabled={busy}>
+                设备中心
+              </button>
+              {!hub && (
+                <>
+                  <ChevronRight size={14} />
+                  {inWorkspace && <span>{s.draft.name} / </span>}
+                  <strong>{navigation.find((n) => n.id === s.page)?.title}</strong>
+                </>
+              )}
+            </div>
+          )}
+          <div className="topbar-right">
+            {!inWorkspace && (
+              <nav className="hub-tools" aria-label="主导航">
+                {!hub && (
+                  <button onClick={() => s.setPage('devices')} disabled={busy}>
+                    <LayoutGrid size={17} />
+                    设备中心
+                  </button>
+                )}
+                <button
+                  onClick={() => s.setPage('test')}
+                  disabled={busy}
+                  aria-current={s.page === 'test' ? 'page' : undefined}
+                >
+                  <MonitorCheck size={17} />
+                  按键测试
+                </button>
+                <button onClick={() => setHelp(true)} aria-label="连接帮助" title="连接帮助">
+                  <CircleHelp size={19} />
+                </button>
+              </nav>
             )}
+            {inWorkspace && <ConnectionBadge />}
           </div>
         </header>
         <main id="main" className="main-content">
-          <div className="page-heading">
+          <div className={`page-heading ${hub ? 'visually-hidden' : ''}`}>
             <div>
-              <div className="eyebrow">{hub ? 'YOUR DEVICES' : 'MAKE IT YOURS'}</div>
               <h1>
                 {hub
                   ? '设备中心'
@@ -262,19 +276,6 @@ export default function App() {
                     ? s.draft.name
                     : navigation.find((n) => n.id === s.page)?.title}
               </h1>
-              <p>
-                {hub
-                  ? '连接你的键盘，让习惯各就各位。'
-                  : s.page === 'keymap'
-                    ? '让每一次按下，都更顺手。'
-                    : s.page === 'macros'
-                      ? '把重复操作，交给一个按键。'
-                      : s.page === 'profiles'
-                        ? '保存你的习惯，也保留每一次修改的退路。'
-                        : s.page === 'test'
-                          ? '在浏览器里，检查每一次按下与释放。'
-                          : '了解连接状态，让问题有迹可循。'}
-              </p>
             </div>
             <div className="heading-actions">
               {inWorkspace && (
@@ -292,13 +293,8 @@ export default function App() {
                   <Unplug size={16} />
                 </Button>
               )}
-              {(!inWorkspace || s.connection === 'offline') && (
-                <Button
-                  primary
-                  onClick={() => setConnectionDialog('device')}
-                  disabled={busy}
-                  data-testid="connect-device"
-                >
+              {!hub && s.connection === 'offline' && inWorkspace && (
+                <Button primary onClick={() => setConnectionDialog('device')} disabled={busy}>
                   {busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}连接键盘
                 </Button>
               )}
@@ -308,7 +304,7 @@ export default function App() {
             <div className="info-banner">
               <Info size={17} />
               <span>
-                <strong>离线草稿</strong> 当前配置已保留。重新连接后，确认设备状态再保存。
+                <strong>离线草稿</strong> 重新连接后可保存。
               </span>
             </div>
           )}
@@ -316,7 +312,7 @@ export default function App() {
             <div className="info-banner demo-banner">
               <WandSparkles size={17} />
               <span>
-                <strong>演示模式</strong> 可以体验编辑、保存与备份；所有操作仅作用于模拟设备。
+                <strong>演示模式</strong> 不会修改真实设备。
               </span>
               <button onClick={() => s.setPage('devices')} disabled={busy}>
                 返回设备中心 <ArrowRight size={14} />
@@ -326,7 +322,7 @@ export default function App() {
           {inWorkspace && s.draft.locked && (
             <div className="alert error" role="status">
               <Info size={18} />
-              <span>Studio 已锁定。请使用键盘原厂设置的解锁按键，然后点击重新读取。</span>
+              <span>设备已锁定，请按原厂说明解锁后重新读取。</span>
             </div>
           )}
           {(s.error || s.notice) && (
@@ -349,17 +345,15 @@ export default function App() {
           )}
           {s.page === 'keymap' && <KeymapPage key={s.model} />}
           {s.page === 'macros' && <MacrosPage />}
-          {s.page === 'profiles' && <ProfilesPage />}
+          {s.page === 'profiles' && inWorkspace && <ProfilesPage key={s.model} />}
           {s.page === 'test' && <TesterPage />}
-          {s.page === 'diagnostics' && <DiagnosticsPage />}
-          <footer className="workspace-footer">
-            <span>
-              <ShieldCheck size={14} /> 只连接原装 PCB · 不上传按键配置
-            </span>
-            <button onClick={() => setHelp(true)}>
-              使用说明 <ArrowRight size={13} />
-            </button>
-          </footer>
+          {inWorkspace && (
+            <footer className="workspace-footer">
+              <button onClick={() => setHelp(true)}>
+                使用说明 <ArrowRight size={13} />
+              </button>
+            </footer>
+          )}
         </main>
         {inWorkspace && (
           <div className="save-bar">
@@ -379,13 +373,8 @@ export default function App() {
                       ? `${changes.length} 个按键${macroChanges ? `、${macroChanges} 个宏` : ''}尚未保存`
                       : s.connection === 'device'
                         ? '与设备配置一致'
-                        : '准备好，从一个按键开始'}
+                        : '无未保存修改'}
                 </strong>
-                <span>
-                  {s.connection === 'demo'
-                    ? '当前为演示模式，不会修改真实设备'
-                    : '写入前自动备份，写入后读回校验'}
-                </span>
               </div>
             </div>
             <div className="save-actions">
@@ -416,11 +405,11 @@ export default function App() {
         onOpenChange={(open) => {
           if (!open && !busy) setConnectionDialog(null);
         }}
-        title={connectionDialog === 'demo' ? '选择演示设备' : '连接你的键盘'}
+        title={connectionDialog === 'demo' ? '选择演示设备' : '连接键盘'}
         description={
           connectionDialog === 'demo'
-            ? '使用示例配置体验工作台，不会连接或修改硬件。'
-            : '插入 USB 数据线，选择型号，再在浏览器弹窗中确认设备。'
+            ? '演示配置不会修改设备。'
+            : '连接 USB 后选择型号，并允许浏览器访问。'
         }
       >
         <div className="connection-choices">
@@ -436,11 +425,7 @@ export default function App() {
               </div>
               <div>
                 <strong>{MODEL_NAMES[model]}</strong>
-                <p>
-                  {model === 'neo75cu'
-                    ? '原装三模 PCB · 请切换到有线模式'
-                    : '原装双模 PCB · USB 数据线连接'}
-                </p>
+                <p>{model === 'neo75cu' ? '原装三模 PCB · USB 模式' : '原装双模 PCB · USB'}</p>
               </div>
               <ArrowRight size={18} />
             </button>
@@ -461,8 +446,8 @@ export default function App() {
       <Modal
         open={review}
         onOpenChange={setReview}
-        title="检查这次修改"
-        description="确认后先保存一份当前配置的本地备份，再写入并读回校验。"
+        title="确认修改"
+        description="保存前自动备份，写入后校验。"
       >
         <div className="review-list">
           {changes.map((change) => (
@@ -494,34 +479,39 @@ export default function App() {
       <Modal
         open={help}
         onOpenChange={setHelp}
-        title="连接你的键盘"
-        description="支持桌面版 Chrome / Edge，通过 USB 数据线连接。"
+        title="连接帮助"
+        description="使用桌面版 Chrome / Edge，通过 USB 连接。"
       >
         <div className="help-content">
-          <h3>Neo75 Cu</h3>
-          <p>连接数据线，并切换到 USB 有线模式。原装三模 PCB 会由网页自动识别，无需导入 JSON。</p>
-          <h3>TOFU PAD</h3>
+          <h3>连接设备</h3>
+          <ol>
+            <li>插入数据线，将键盘切换到有线模式。</li>
+            <li>点击「连接键盘」，选择型号并授权访问。</li>
+            <li>点击已连接的设备卡片，开始配置。</li>
+          </ol>
+          <h3>无法连接</h3>
           <p>
-            连接数据线后优先使用 USB。浏览器选择原装 TOFU PAD 对应的 USB 串口。如果固件要求 Studio
-            解锁，请按原厂说明执行解锁，网页会显示当前状态。
+            确认线缆支持数据传输，关闭其他键盘配置页面后重试。设备提示锁定时，请按原厂说明解锁。Linux
+            可能需要设置 USB 或串口访问权限。
           </p>
-          <h3>找不到设备？</h3>
-          <p>
-            确认使用能传输数据的线缆，关闭 VIA、ZMK Studio 等其他配置页面后重试。Linux
-            用户还可能需要 HID / 串口访问权限。
-          </p>
-          <h3>连接与功能范围</h3>
-          <p>
-            首版支持两款原装 PCB 的 USB 配置；蓝牙配置不提供，2.4G
-            尚未验证。功能受原厂固件限制：Neo75 Cu 的高级组合键存在限制；TOFU PAD
-            可改键和调用已有行为，不能通过 Studio 新建复杂宏。
-          </p>
+          <h3>目前支持的型号</h3>
+          <ul className="help-models">
+            <li>
+              <strong>{MODEL_NAMES.neo75cu}</strong>
+              <span>原装三模 PCB</span>
+            </li>
+            <li>
+              <strong>{MODEL_NAMES['tofu-pad']}</strong>
+              <span>原装双模 PCB</span>
+            </li>
+          </ul>
+          <p>支持 USB 配置。2.4G 尚未验证，蓝牙不支持配置。</p>
           <div className="help-links">
-            <a href="https://www.qwertykeys.com/pages/fw" target="_blank" rel="noreferrer">
-              Neo 官方资料 ↗
+            <a href="https://github.com/ZackLeo219/viapp#使用" target="_blank" rel="noreferrer">
+              使用文档 ↗
             </a>
-            <a href="https://zmk.dev/docs/features/studio" target="_blank" rel="noreferrer">
-              ZMK Studio 文档 ↗
+            <a href="https://github.com/ZackLeo219/viapp/issues" target="_blank" rel="noreferrer">
+              反馈问题 ↗
             </a>
           </div>
         </div>
@@ -545,131 +535,56 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
   const devices = Object.values(s.sessions).filter((session) => session.connection === 'device');
   const demos = Object.values(s.sessions).filter((session) => session.connection === 'demo');
   return (
-    <div className="device-hub">
-      <div className="hub-section-heading">
-        <h2>
-          我的设备 <span>{devices.length.toString().padStart(2, '0')}</span>
-        </h2>
-        <span>
-          <ShieldCheck size={14} />
-          设备直连 · 配置留在本机
-        </span>
-      </div>
-      {devices.length ? (
-        <div className="connected-devices">
-          {devices.map((session) => (
-            <button
-              className="connected-card"
-              key={session.model}
-              onClick={() => s.openDevice(session.model)}
-              disabled={busy}
-              aria-label={`${session.draft.name} 开始配置`}
-            >
-              <div className="connected-card-top">
-                <span className="connection-badge device">
-                  <span className="status-dot" />
-                  USB 已连接
-                </span>
-                {isDirty(session) && <span className="draft-tag">有未保存草稿</span>}
-              </div>
-              <div className="connected-visual">
-                <Keyboard snapshot={session.draft} layerId={session.layerId} miniature />
-              </div>
-              <div className="connected-card-bottom">
-                <div>
-                  <h3>{session.draft.name}</h3>
-                  <p>
-                    {session.draft.keys.length} 键 · {session.draft.layers.length} 层 · 原装 PCB
-                  </p>
+    <div className={`device-hub ${devices.length ? 'has-devices' : 'empty-hub'}`}>
+      <div className="hub-devices-stage">
+        {devices.length ? (
+          <div className="connected-devices">
+            {devices.map((session) => (
+              <button
+                className="connected-card"
+                key={session.model}
+                onClick={() => s.openDevice(session.model)}
+                disabled={busy}
+                aria-label={`${session.draft.name} 开始配置`}
+              >
+                <div className="connected-visual">
+                  <Keyboard snapshot={session.draft} layerId={session.layerId} miniature />
                 </div>
-                <span>
-                  开始配置 <ArrowRight size={18} />
-                </span>
-              </div>
-            </button>
-          ))}
-          {devices.length < 2 && (
-            <button className="add-device-card" onClick={onConnect} disabled={busy}>
-              <Plus size={27} />
-              <span>连接另一台键盘</span>
-            </button>
-          )}
-        </div>
-      ) : (
-        <section className="device-empty">
-          <div className="empty-copy">
-            <span className="empty-eyebrow">A SPACE FOR YOUR KEYBOARD</span>
-            <h2>
-              你的键盘，
-              <br />
-              <span>由你定义。</span>
-            </h2>
-            <p>
-              连接一把键盘，进入专属工作台。
-              <br />
-              从一个键位开始，调成自己喜欢的样子。
-            </p>
-            <Button primary onClick={onConnect} disabled={busy}>
-              <Plus size={17} />
-              连接第一台键盘
-            </Button>
+                <div className="connected-card-bottom">
+                  <div>
+                    <h2>{session.draft.name}</h2>
+                    <p>
+                      <span className="status-dot live" />
+                      USB 已连接{isDirty(session) && <span className="draft-tag">未保存</span>}
+                    </p>
+                  </div>
+                  <ArrowRight size={20} />
+                </div>
+              </button>
+            ))}
           </div>
-          <div className="connection-object" aria-hidden="true">
-            <div className="connection-key">
-              <Usb size={49} strokeWidth={1.2} />
-              <span>connect</span>
-            </div>
-            <span className="connection-caption">USB / READY TO CONNECT</span>
-          </div>
-          <div className="supported-models">
-            <span>支持原装 PCB</span>
-            <span>Neo75 Cu</span>
-            <span>TOFU PAD</span>
-            <span className="supported-browser">Chrome / Edge</span>
-          </div>
-        </section>
-      )}
-      <div className="hub-steps">
-        <div>
-          <span>01</span>
-          <div>
-            <strong>连接设备</strong>
-            <p>USB 数据线，浏览器授权</p>
-          </div>
-        </div>
-        <div>
-          <span>02</span>
-          <div>
-            <strong>进入工作台</strong>
-            <p>选择已连接的设备卡片</p>
-          </div>
-        </div>
-        <div>
-          <span>03</span>
-          <div>
-            <strong>定义你的习惯</strong>
-            <p>编辑、检查，再保存到键盘</p>
-          </div>
-        </div>
+        ) : (
+          <IdleKeyboard />
+        )}
       </div>
-      <div className="demo-entry">
-        <div>
-          <WandSparkles size={18} />
-          <span>想先看看工作台？</span>
-        </div>
+      <div className="hub-connect">
+        <Button primary onClick={onConnect} disabled={busy} data-testid="connect-device">
+          <Plus size={17} />
+          {devices.length ? '添加设备' : '连接键盘'}
+        </Button>
+        {!devices.length && <h2>请连接设备</h2>}
+        <p>使用 USB 数据线连接</p>
+      </div>
+      <div className="hub-bottom">
         <button onClick={onDemo} disabled={busy}>
-          体验演示 <ArrowRight size={15} />
+          体验演示 <ArrowRight size={13} />
         </button>
+        {demos.map((session) => (
+          <button key={session.model} onClick={() => s.openDevice(session.model)} disabled={busy}>
+            继续 {session.draft.name} 演示 <ArrowRight size={13} />
+          </button>
+        ))}
       </div>
-      {demos.length > 0 && (
-        <div className="demo-sessions">
-          {demos.map((session) => (
-            <button key={session.model} onClick={() => s.openDevice(session.model)} disabled={busy}>
-              继续 {session.draft.name} 演示 <ArrowRight size={13} />
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -711,9 +626,8 @@ function KeymapPage() {
           <div>
             <h2>
               {s.draft.name}
-              <span className="subtle-tag">{s.draft.keys.length} KEYS</span>
+              <span className="subtle-tag">{s.draft.keys.length} 键</span>
             </h2>
-            <p>点击按键，重新定义它的作用</p>
           </div>
           <Button
             onClick={() => void s.refresh()}
@@ -745,7 +659,7 @@ function KeymapPage() {
         </div>
         <div className="keyboard-stage">
           <div className="stage-label">
-            <span>LAYOUT / {s.model === 'neo75cu' ? '75%' : 'NUMPAD'}</span>
+            <span>{s.model === 'neo75cu' ? '75%' : '数字键盘'}</span>
             <span>{s.layerId === s.draft.layers[0].id ? '基础层' : '功能层'}</span>
           </div>
           <Keyboard
@@ -769,9 +683,7 @@ function KeymapPage() {
         </div>
         <div className="editor-tip">
           <MousePointer2 size={17} />
-          <span>
-            先选一个键，再从右侧选择功能。<kbd>Ctrl</kbd> + <kbd>Z</kbd> 可以撤销。
-          </span>
+          <span>选中按键后，在右侧设置功能。</span>
         </div>
       </section>
       <aside className="panel inspector">
@@ -837,14 +749,6 @@ function KeymapPage() {
             </div>
           )}
         </div>
-        <div className="inspector-note">
-          <Info size={14} />
-          <span>
-            {s.draft.protocol === 'via'
-              ? '保留原厂键码，不开放未验证的 ANY 高级功能。'
-              : '从原厂固件读取可用行为，未识别的现有绑定会原样保留。'}
-          </span>
-        </div>
       </aside>
     </div>
   );
@@ -867,12 +771,8 @@ function MacrosPage() {
         <div className="feature-icon">
           <Command size={30} />
         </div>
-        <h2>使用固件已有的行为</h2>
-        <p>
-          TOFU PAD 原厂 ZMK Studio 当前不支持在线新建或编辑复杂宏。
-          <br />
-          已定义的无参数宏行为会出现在“按键设置 → 设备”中；现有绑定会完整保留。
-        </p>
+        <h2>当前固件不支持编辑宏</h2>
+        <p>已有宏可在「按键设置 → 设备」中选择。</p>
         <Button onClick={() => s.setPage('keymap')}>
           返回按键设置 <ArrowRight size={16} />
         </Button>
@@ -886,7 +786,7 @@ function MacrosPage() {
       <div className="panel-heading">
         <div>
           <h2>宏序列</h2>
-          <p>编辑完成后应用到草稿，再统一保存到键盘</p>
+          <p>应用到草稿后，点击「保存到键盘」。</p>
         </div>
         <span className="capacity">
           {used} / {Math.max(0, s.draft.macroBufferSize - 1)} bytes
@@ -907,16 +807,11 @@ function MacrosPage() {
             <h3>宏 {index + 1}</h3>
             <span className="subtle-tag">M{index}</span>
           </div>
-          {unknown && (
-            <div className="alert error">
-              此宏含有暂不支持的编码，原始字节会保留。编辑并应用将替换此槽位。
-            </div>
-          )}
+          {unknown && <div className="alert error">此宏包含未知编码，编辑并应用会覆盖原内容。</div>}
           {!steps.length && (
             <div className="macro-empty">
               <Command size={32} />
-              <strong>从第一个动作开始</strong>
-              <p>添加文本、按键或延时，组成你的操作序列。</p>
+              <strong>暂无动作</strong>
             </div>
           )}
           <div className="macro-steps">
@@ -1012,7 +907,7 @@ function MacrosPage() {
                   const size = used - s.draft.macros[index].length + encoded.length;
                   if (size >= s.draft.macroBufferSize) throw new Error('宏总长度超出设备容量。');
                   s.editMacro(index, encoded);
-                  s.notify('宏已应用到草稿。可以在按键设置中将 M' + index + ' 分配给一个键。');
+                  s.notify('宏已应用到草稿。');
                 } catch (e) {
                   s.report(e);
                 }
@@ -1033,7 +928,10 @@ function ProfilesPage() {
   const [name, setName] = useState('');
   const file = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<Profile | null>(null);
-  const refresh = () => listProfiles().then(setProfiles).catch(s.report);
+  const refresh = () =>
+    listProfiles()
+      .then((items) => setProfiles(items.filter((p) => p.snapshot.model === s.model)))
+      .catch(s.report);
   useEffect(() => {
     void refresh();
   }, []);
@@ -1042,7 +940,7 @@ function ProfilesPage() {
       <div className="panel-heading">
         <div>
           <h2>本地方案库</h2>
-          <p>方案与备份保存在此浏览器，可导出文件随身携带</p>
+          <p>保存在当前浏览器，可导出备份。</p>
         </div>
         <Button onClick={() => file.current?.click()}>
           <ArrowUpFromLine size={16} />
@@ -1065,10 +963,16 @@ function ProfilesPage() {
             void f
               .text()
               .then(parseProfile)
-              .then((p) => saveProfile(p.name, p.snapshot))
+              .then((p) => {
+                if (p.snapshot.model !== s.model)
+                  throw new Error(
+                    `此方案属于 ${MODEL_NAMES[p.snapshot.model]}，请在对应设备中导入。`,
+                  );
+                return saveProfile(p.name, p.snapshot);
+              })
               .then(() => {
                 void refresh();
-                s.notify('方案已导入本地库，尚未写入设备。');
+                s.notify('方案已导入，尚未写入设备。');
               })
               .catch(s.report);
           }}
@@ -1083,7 +987,7 @@ function ProfilesPage() {
               .then(() => {
                 setName('');
                 void refresh();
-                s.notify('当前草稿已保存为本地方案。');
+                s.notify('方案已保存。');
               })
               .catch(s.report);
           }}
@@ -1094,7 +998,7 @@ function ProfilesPage() {
             maxLength={80}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="给当前配置起个名字，例如：日常办公"
+            placeholder="方案名称"
           />
           <Button type="submit" primary disabled={!name.trim()}>
             保存当前方案
@@ -1105,8 +1009,8 @@ function ProfilesPage() {
         {profiles.length === 0 ? (
           <div className="empty-state">
             <FolderHeart size={36} />
-            <h3>把第一套习惯，存下来。</h3>
-            <p>手动保存的方案和写入前自动备份都会出现在这里。</p>
+            <h3>暂无方案</h3>
+            <p>保存的方案与自动备份会显示在这里。</p>
           </div>
         ) : (
           profiles.map((p) => (
@@ -1185,231 +1089,6 @@ function ProfilesPage() {
           </Button>
         </div>
       </Modal>
-    </section>
-  );
-}
-
-function TesterPage() {
-  const [active, setActive] = useState(false);
-  const [held, setHeld] = useState<string[]>([]);
-  const [seen, setSeen] = useState<string[]>([]);
-  const [events, setEvents] = useState<{ code: string; type: string; time: string }[]>([]);
-  const stage = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const reset = () => {
-      setHeld([]);
-      setActive(false);
-    };
-    window.addEventListener('blur', reset);
-    return () => window.removeEventListener('blur', reset);
-  }, []);
-  return (
-    <section className="panel tester-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>浏览器按键测试</h2>
-          <p>测试窗口接收到的按键事件，无需写入键盘配置</p>
-        </div>
-        <Button
-          onClick={() => {
-            if (!active) stage.current?.focus();
-            setActive(!active);
-            setHeld([]);
-          }}
-          primary
-        >
-          {active ? '停止测试' : '开始测试'}
-        </Button>
-      </div>
-      <div
-        className={`test-stage ${active ? 'listening' : ''}`}
-        ref={stage}
-        tabIndex={0}
-        role="group"
-        aria-label="按键测试区域"
-        onBlur={() => {
-          setActive(false);
-          setHeld([]);
-        }}
-        onKeyDown={(e) => {
-          if (!active) return;
-          e.preventDefault();
-          if (e.code === 'Escape') {
-            setActive(false);
-            setHeld([]);
-            return;
-          }
-          if (e.repeat) return;
-          setHeld((old) => [...new Set([...old, e.code])]);
-          setSeen((old) => [...new Set([...old, e.code])]);
-          setEvents((old) =>
-            [{ code: e.code, type: '按下', time: new Date().toLocaleTimeString() }, ...old].slice(
-              0,
-              40,
-            ),
-          );
-        }}
-        onKeyUp={(e) => {
-          if (!active) return;
-          e.preventDefault();
-          setHeld((old) => old.filter((k) => k !== e.code));
-          setEvents((old) =>
-            [{ code: e.code, type: '释放', time: new Date().toLocaleTimeString() }, ...old].slice(
-              0,
-              40,
-            ),
-          );
-        }}
-      >
-        <div className="test-status">
-          <span className={`status-dot ${active ? 'live' : ''}`} />
-          {active ? '正在监听 · 按 Esc 退出' : '点击“开始测试”，然后按下键盘'}
-        </div>
-        <div className="held-keys">
-          {held.length ? held.map((k) => <kbd key={k}>{k}</kbd>) : <KeyboardIcon size={56} />}
-        </div>
-        <div className="test-stats">
-          <span>
-            <strong>{seen.length}</strong>已测按键
-          </span>
-          <span>
-            <strong>{held.length}</strong>同时按下
-          </span>
-        </div>
-      </div>
-      <div className="tester-note">
-        <Info size={16} />
-        <p>
-          此测试不能区分输入来自哪台键盘。Fn、层切换键和系统保留快捷键可能不会产生浏览器事件；这里不用于测量硬件延迟。
-        </p>
-        <Button
-          onClick={() => {
-            setSeen([]);
-            setEvents([]);
-            setHeld([]);
-          }}
-        >
-          清空记录
-        </Button>
-      </div>
-      <div className="event-log">
-        {events.slice(0, 12).map((e, i) => (
-          <div key={i}>
-            <span>{e.time}</span>
-            <strong>{e.code}</strong>
-            <span>{e.type}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function DiagnosticsPage() {
-  const s = useWorkspace();
-  const environment = {
-    secure: window.isSecureContext,
-    webHid: 'hid' in navigator,
-    webSerial: 'serial' in navigator,
-  };
-  const entries = [
-    { title: '安全访问环境', ok: environment.secure, detail: 'HTTPS / localhost' },
-    { title: 'WebHID', ok: environment.webHid, detail: 'Neo75 Cu 的 USB 配置接口' },
-    { title: 'Web Serial', ok: environment.webSerial, detail: 'TOFU PAD 的 USB 配置接口' },
-    {
-      title: '真实设备连接',
-      ok: s.connection === 'device',
-      detail:
-        s.connection === 'demo'
-          ? '当前为模拟设备'
-          : s.connection === 'device'
-            ? `${s.draft.name} · ${s.draft.protocol.toUpperCase()}`
-            : '点击右上角连接键盘',
-    },
-  ];
-  const report = () =>
-    JSON.stringify(
-      {
-        app: 'VIAPP',
-        version: '0.1.0',
-        timestamp: new Date().toISOString(),
-        environment,
-        model: s.model,
-        connection: s.connection,
-        protocol: s.draft.protocol,
-        protocolVersion: s.connection === 'device' ? s.draft.protocolVersion : null,
-        keyCount: s.connection === 'device' ? s.draft.keys.length : null,
-        logs: s.logs,
-      },
-      null,
-      2,
-    );
-  return (
-    <section className="panel diagnostics-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>连接状态</h2>
-          <p>诊断报告不包含键位、宏内容或设备序列号</p>
-        </div>
-        <Button onClick={() => download('viapp-diagnostics.json', report())}>
-          <ArrowDownToLine size={16} />
-          导出诊断
-        </Button>
-      </div>
-      <div className="diagnostic-grid">
-        {entries.map((entry) => (
-          <div className="diagnostic-card" key={entry.title}>
-            <div className={`check-icon ${entry.ok ? 'ok' : ''}`}>
-              {entry.ok ? <Check size={20} /> : <Info size={20} />}
-            </div>
-            <div>
-              <strong>{entry.title}</strong>
-              <p>{entry.detail}</p>
-            </div>
-            <span>{entry.ok ? '正常' : '待就绪'}</span>
-          </div>
-        ))}
-      </div>
-      <div className="compatibility-row">
-        <span>
-          <Usb size={17} /> USB 有线 <strong>首版配置方式</strong>
-        </span>
-        <span>
-          <Radio size={17} /> 2.4G <strong>待验证</strong>
-        </span>
-        <span>
-          蓝牙 <strong>仅日常输入</strong>
-        </span>
-      </div>
-      <div className="log-heading">
-        <h3>
-          <Terminal size={16} />
-          操作记录
-        </h3>
-        <button
-          onClick={() =>
-            void navigator.clipboard
-              .writeText(report())
-              .then(() => s.notify('诊断报告已复制。'))
-              .catch((e) => s.report(errorMessage(e)))
-          }
-        >
-          <Copy size={14} />
-          复制诊断
-        </button>
-      </div>
-      <div className="diagnostic-log">
-        {s.logs.length ? (
-          [...s.logs].reverse().map((l, i) => (
-            <div className={`log-entry ${l.level}`} key={i}>
-              <time>{new Date(l.time).toLocaleTimeString()}</time>
-              <span>{l.message}</span>
-            </div>
-          ))
-        ) : (
-          <p>尚无操作记录。连接设备后会在这里显示过程。</p>
-        )}
-      </div>
     </section>
   );
 }

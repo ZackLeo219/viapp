@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: 'VIAPP 键盘工作台',
         short_name: 'VIAPP',
-        description: '为原装 Neo75 Cu 和 TOFU PAD 打造的键盘工作台',
+        description: '键位设置、方案管理与按键测试',
         lang: 'zh-CN',
         theme_color: '#161b19',
         background_color: '#f6f7f3',

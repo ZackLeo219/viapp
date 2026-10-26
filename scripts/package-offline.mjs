@@ -40,6 +40,6 @@ const checksums = await Promise.all(
 );
 await writeFile(resolve(root, 'release', 'SHA256SUMS.txt'), checksums.join('\n') + '\n');
 await writeFile(
-  resolve(root, 'release', '使用说明.txt'),
+  resolve(root, 'release', 'USAGE.txt'),
   'VIAPP 离线版\n\nWindows：双击 viapp-windows-x64.exe。\nLinux / macOS：赋予可执行权限后运行对应文件。\n启动器自动打开 http://localhost:5178/，请使用 Chrome / Edge。\n无需安装 Node.js、Docker 或数据库；全部网页资源已内置。\n关闭启动器窗口即停止本地服务。\n浏览器方案以访问地址区分，在线版与离线版之间请导出/导入配置文件。\n首次运行的未签名程序可能需要操作系统确认。\n',
 );

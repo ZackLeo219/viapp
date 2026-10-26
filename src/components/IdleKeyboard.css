@@ -1,0 +1,56 @@
+.idle-keyboard {
+  width: min(780px, 86vw);
+  margin: 0 auto;
+  pointer-events: none;
+}
+.idle-keyboard svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.idle-float {
+  animation: idle-float 7s ease-in-out infinite;
+}
+.idle-signal {
+  stroke-dasharray: 12 240;
+  animation: idle-signal 6s linear infinite;
+}
+.idle-lit {
+  animation: idle-key-glow 6s ease-in-out infinite;
+}
+@keyframes idle-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes idle-signal {
+  from {
+    stroke-dashoffset: 252;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes idle-key-glow {
+  0%,
+  25%,
+  80%,
+  100% {
+    fill: #f7f8ef;
+  }
+  45%,
+  55% {
+    fill: #d5e3bb;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .idle-float,
+  .idle-signal,
+  .idle-lit {
+    animation: none;
+  }
+}
