@@ -1,0 +1,48 @@
+name: 设备适配申请
+description: 申请支持新的原装 PCB
+title: '[设备适配] '
+body:
+  - type: input
+    id: model
+    attributes:
+      label: 型号与 PCB 版本
+      placeholder: 型号、原装 PCB 版本、有线 / 双模 / 三模
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: 固件版本
+      placeholder: 不清楚可以填写未知
+  - type: dropdown
+    id: configurator
+    attributes:
+      label: 官方配置方式
+      options:
+        - VIA
+        - Vial
+        - ZMK Studio
+        - 厂商驱动
+        - 未知 / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: resources
+    attributes:
+      label: 官方资料
+      description: 提供产品页、使用说明、官方配列 JSON 或协议资料链接。
+    validations:
+      required: true
+  - type: textarea
+    id: device_info
+    attributes:
+      label: 设备信息与需求
+      description: 可填写 USB VID/PID、层数、布局和希望使用的功能。请勿公开序列号、个人配置备份或私人宏。
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: 验证条件
+      options:
+        - label: 使用原装 PCB
+          required: true
+        - label: 可以协助 USB 真机验证

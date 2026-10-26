@@ -1,0 +1,28 @@
+name: 问题反馈
+description: 报告连接、改键或界面问题
+title: '[问题] '
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: 环境
+      placeholder: 系统、浏览器及版本，网页版 / 离线版
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 设备
+      placeholder: 型号、原装 PCB 版本、固件、连接方式
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 描述操作顺序、预期结果和实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 错误提示或截图
+      description: 请遮盖序列号、私人键位及宏内容，不要上传完整个人备份。

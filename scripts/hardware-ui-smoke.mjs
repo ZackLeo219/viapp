@@ -140,8 +140,11 @@ try {
     if ((await evaluate('document.querySelector("h1")?.textContent')) !== '设备中心')
       throw new Error('Connection should return to the device center.');
   }
+  await evaluate('window.__viappBeforeReload = true');
   await call('Page.reload', { ignoreCache: true });
-  await waitFor('document.querySelectorAll(".connected-card").length === 2');
+  await waitFor(
+    '!window.__viappBeforeReload && document.querySelectorAll(".connected-card").length === 2',
+  );
   if (await evaluate('!!document.querySelector("[role=dialog]")'))
     throw new Error('Automatic discovery unexpectedly requested a model.');
   await click('[aria-label="Neo75 Cu 开始配置"]');
