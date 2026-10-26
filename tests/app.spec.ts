@@ -648,6 +648,41 @@ test('key capture remaps a single key while rejecting unsupported chords without
 });
 
 for (const model of ['Neo75 Cu', 'TOFU PAD']) {
+  test(`${model}: changing the capture target keeps the prompt and inspector steady`, async ({
+    page,
+  }) => {
+    await demo(page, model);
+    const board = page.getByRole('group', { name: `${model} 基础层可视化键盘` });
+    const first = board.locator('[data-key-index="0"]');
+    const second = board.locator('[data-key-index="1"]');
+    const capture = page.getByRole('group', { name: '录入目标按键' });
+    await first.click();
+    await expect(capture).toBeFocused();
+    const prompt = await capture.elementHandle();
+    const searchY = (await page.locator('.search-field').boundingBox())!.y;
+    const box = (await second.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    // Check between press and release, where blur previously removed the prompt.
+    await expect(capture).toBeFocused();
+    await page.mouse.up();
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    expect(await capture.evaluate((node, original) => node === original, prompt)).toBe(true);
+    await second.click();
+    expect(await capture.evaluate((node, original) => node === original, prompt)).toBe(true);
+    await page.keyboard.press('c');
+    await expect(second).toHaveAccessibleName(/^C，/);
+    await expect(page.getByRole('button', { name: '录入按键', exact: true })).toBeFocused();
+    expect((await page.locator('.search-field').boundingBox())!.y).toBeCloseTo(searchY, 1);
+    await second.click();
+    expect(await capture.evaluate((node, original) => node === original, prompt)).toBe(true);
+    expect((await page.locator('.search-field').boundingBox())!.y).toBeCloseTo(searchY, 1);
+    await page.getByRole('textbox', { name: '搜索按键功能' }).fill('A');
+    await expect(capture).toHaveCount(0);
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '设为 A', exact: true }).click();
+    await expect(second).toHaveAccessibleName(/^A，/);
+  });
   test(`${model}: clicking a key starts capture, including the same key again, without taking over search`, async ({
     page,
   }) => {
@@ -683,6 +718,50 @@ for (const model of ['Neo75 Cu', 'TOFU PAD']) {
     await expect(page.locator('.profile-row')).toHaveCount(0);
   });
 }
+
+test('leaving the editor clears capture and selection without losing the edited binding', async ({
+  page,
+}) => {
+  await demo(page);
+  const first = page
+    .getByRole('group', { name: 'Neo75 Cu 基础层可视化键盘' })
+    .locator('[data-key-index="0"]');
+  const capture = page.getByRole('group', { name: '录入目标按键' });
+  const selected = page.locator('.keyboard-svg .key.selected');
+  await first.click();
+  await page.keyboard.press('a');
+  await first.click();
+  await page.locator('.editor-tip').click();
+  await expect(capture).toHaveCount(0);
+  await expect(selected).toHaveCount(0);
+  await expect(page.getByText('选择一个按键', { exact: true })).toBeVisible();
+  await page.keyboard.press('b');
+  await expect(first).toHaveAccessibleName(/^A，/);
+  await first.click();
+  await expect(capture).toBeFocused();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(selected).toHaveCount(0);
+  await expect(capture).toHaveCount(0);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.keyboard.press('c');
+  await expect(first).toHaveAccessibleName(/^A，/);
+  await expect(selected).toHaveCount(0);
+  await first.click();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(selected).toHaveCount(0);
+  await expect(capture).toHaveCount(0);
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, 'visibilityState');
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await first.click();
+  await expect(capture).toBeFocused();
+  await page.keyboard.press('d');
+  await expect(first).toHaveAccessibleName(/^D，/);
+});
 
 test('keyboard navigation, layer changes and page changes do not accidentally restart capture', async ({
   page,

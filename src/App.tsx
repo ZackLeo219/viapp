@@ -672,6 +672,35 @@ function KeymapPage() {
   } | null>(null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('常用');
+  useEffect(() => {
+    const finishEditing = () => {
+      setCapture(null);
+      s.selectKey(null);
+    };
+    const outsideControl = (event: PointerEvent) => {
+      const target = event.target;
+      // Searching, choosing a function and using editor controls keep the target.
+      if (
+        target instanceof Element &&
+        target.closest(
+          'button, a, input, textarea, select, label, [role="button"], [role="tab"], .key-capture',
+        )
+      )
+        return;
+      finishEditing();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') finishEditing();
+    };
+    document.addEventListener('pointerdown', outsideControl, true);
+    window.addEventListener('blur', finishEditing);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('pointerdown', outsideControl, true);
+      window.removeEventListener('blur', finishEditing);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [s.selectKey]);
   const actions = useMemo(() => actionsFor(s.draft), [s.draft]);
   const layer = s.draft.layers.find((l) => l.id === s.layerId)!;
   const selected = s.selectedIndex === null ? null : layer.bindings[s.selectedIndex];
@@ -797,8 +826,7 @@ function KeymapPage() {
               </span>
             </div>
             <KeyCapture
-              key={`${s.layerId}-${s.selectedIndex}-${autoCapture ? capture.attempt : 'manual'}`}
-              autoStart={autoCapture}
+              startRequest={autoCapture ? capture.attempt : null}
               actions={actions}
               onAssign={assign}
               disabled={isEditingBlocked(s)}

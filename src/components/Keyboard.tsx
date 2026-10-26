@@ -121,6 +121,10 @@ export function Keyboard({
             aria-label={`${label}，位置 ${key.id}${changed ? '，已修改' : ''}`}
             aria-pressed={miniature ? undefined : active}
             data-key-index={key.index}
+            onMouseDown={(e) => {
+              // Keep capture focused until the click updates its target.
+              if (onSelect && e.button === 0) e.preventDefault();
+            }}
             onClick={() => onSelect?.(key.index)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {

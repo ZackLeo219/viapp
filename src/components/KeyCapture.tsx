@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Keyboard, X } from 'lucide-react';
 import { actionForInput, codeForInputEvent, isModifier } from '../domain/keyboard-input';
 import type { KeyAction } from '../domain/keycodes';
@@ -8,25 +8,35 @@ export function KeyCapture({
   actions,
   onAssign,
   disabled,
-  autoStart = false,
+  startRequest = null,
 }: {
   actions: KeyAction[];
   onAssign(action: KeyAction): void;
   disabled: boolean;
-  autoStart?: boolean;
+  startRequest?: number | null;
 }) {
-  const [recording, setRecording] = useState(autoStart && !disabled);
+  const [recording, setRecording] = useState(startRequest !== null && !disabled);
   const [message, setMessage] = useState('');
   const stage = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const modifier = useRef<string | null>(null);
   const rejected = useRef(false);
   const restoreFocus = useRef(false);
+  const lastRequest = useRef(startRequest);
   const stop = (restore = false) => {
     restoreFocus.current = restore;
     setRecording(false);
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (lastRequest.current === startRequest) return;
+    lastRequest.current = startRequest;
+    restoreFocus.current = false;
+    modifier.current = null;
+    rejected.current = false;
+    setMessage('');
+    setRecording(startRequest !== null && !disabled);
+  }, [startRequest, disabled]);
+  useLayoutEffect(() => {
     if (recording) {
       modifier.current = null;
       rejected.current = false;
@@ -35,8 +45,8 @@ export function KeyCapture({
       restoreFocus.current = false;
       trigger.current?.focus({ preventScroll: true });
     }
-  }, [recording]);
-  useEffect(() => {
+  }, [recording, startRequest]);
+  useLayoutEffect(() => {
     if (disabled) stop();
   }, [disabled]);
   useEffect(() => {
@@ -76,45 +86,42 @@ export function KeyCapture({
   };
   return (
     <div className="key-capture">
-      {!recording && (
+      <button
+        ref={trigger}
+        className="button capture-trigger"
+        hidden={recording}
+        disabled={disabled}
+        onClick={() => {
+          setMessage('');
+          setRecording(true);
+        }}
+      >
+        <Keyboard size={16} />
+        录入按键
+      </button>
+      <div className="capture-box" hidden={!recording}>
+        <div
+          ref={stage}
+          tabIndex={0}
+          role="group"
+          aria-label="录入目标按键"
+          onKeyDown={(e) => key(e, true)}
+          onKeyUp={(e) => key(e, false)}
+          onBlur={() => stop()}
+        >
+          <span className="status-dot live" />
+          按下目标键
+        </div>
         <button
-          ref={trigger}
-          className="button capture-trigger"
-          disabled={disabled}
+          aria-label="取消录入"
+          onPointerDown={(e) => e.preventDefault()}
           onClick={() => {
-            setMessage('');
-            setRecording(true);
+            stop(true);
           }}
         >
-          <Keyboard size={16} />
-          录入按键
+          <X size={15} />
         </button>
-      )}
-      {recording && (
-        <div className="capture-box">
-          <div
-            ref={stage}
-            tabIndex={0}
-            role="group"
-            aria-label="录入目标按键"
-            onKeyDown={(e) => key(e, true)}
-            onKeyUp={(e) => key(e, false)}
-            onBlur={() => stop()}
-          >
-            <span className="status-dot live" />
-            按下目标键
-          </div>
-          <button
-            aria-label="取消录入"
-            onPointerDown={(e) => e.preventDefault()}
-            onClick={() => {
-              stop(true);
-            }}
-          >
-            <X size={15} />
-          </button>
-        </div>
-      )}
+      </div>
       {recording && message && <p role="status">{message}</p>}
     </div>
   );
