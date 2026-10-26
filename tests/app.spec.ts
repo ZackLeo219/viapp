@@ -184,6 +184,7 @@ async function mockConnectedKeyboard(page: Page) {
       opened = false;
       async open() {
         this.opened = true;
+        document.documentElement.dataset.deviceOpened = '1';
       }
       async close() {
         this.opened = false;
@@ -201,7 +202,10 @@ async function mockConnectedKeyboard(page: Page) {
     }
     const keyboard = new KeyboardFixture();
     const hid = Object.assign(new EventTarget(), {
-      getDevices: async () => [keyboard],
+      getDevices: async () => {
+        document.documentElement.dataset.deviceScanned = '1';
+        return [keyboard];
+      },
       requestDevice: async () => [keyboard],
     });
     Object.defineProperty(navigator, 'hid', { value: hid, configurable: true });
@@ -209,9 +213,11 @@ async function mockConnectedKeyboard(page: Page) {
 }
 
 async function demo(page: Page, model = 'Neo75 Cu', autoSave = false) {
-  await page.goto('/');
-  await page.getByRole('button', { name: '体验演示' }).click();
-  await page.getByRole('button', { name: `演示 ${model}`, exact: true }).click();
+  if (model === 'TOFU PAD') await page.goto('/?demo=tofu-pad');
+  else {
+    await page.goto('/');
+    await page.getByRole('button', { name: '体验演示' }).click();
+  }
   await expect(page.locator('.connection-badge')).toHaveText('演示模式');
   if (!autoSave) await page.getByRole('checkbox', { name: '自动保存', exact: true }).uncheck();
 }
@@ -484,7 +490,6 @@ test('a Shift event with no location automatically lights right Shift and stays 
   await expect(page.getByTestId('held-count')).toHaveText('0');
   await page.reload();
   await page.getByRole('button', { name: '体验演示', exact: true }).click();
-  await page.getByRole('button', { name: '演示 Neo75 Cu', exact: true }).click();
   await page.getByRole('button', { name: '按键测试', exact: true }).click();
   await unknownShift('keydown');
   await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-state', 'held');
@@ -518,7 +523,6 @@ test('mobile layout remains usable without horizontal page overflow', async ({ p
   );
   await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
   await page.getByRole('button', { name: '体验演示' }).click();
-  await page.getByRole('button', { name: '演示 Neo75 Cu', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Neo75 Cu 基础层可视化键盘' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -537,7 +541,7 @@ test('installed cache serves the application without network', async ({ page, co
   await context.setOffline(false);
 });
 
-test('home requests native permission without a model picker and keeps device tools inside', async ({
+test('one add button offers the other native list only after an explicit follow-up click', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -550,35 +554,139 @@ test('home requests native permission without a model picker and keeps device to
       },
     });
     Object.defineProperty(navigator, 'hid', { value: hid, configurable: true });
+    const serial = Object.assign(new EventTarget(), {
+      getPorts: async () => [],
+      requestPort: async () => {
+        document.documentElement.dataset.serialRequests = '1';
+        throw new DOMException('Cancelled', 'NotFoundError');
+      },
+    });
+    Object.defineProperty(navigator, 'serial', { value: serial, configurable: true });
   });
   await page.goto('/');
   await expect(page.locator('.connected-card')).toHaveCount(0);
   for (const name of ['按键设置', '配置管理', '按键测试'])
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   await expect(page.locator('.save-bar')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '其他连接方式', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('connect-device')).toHaveText('添加设备');
   await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
   await page.getByTestId('connect-device').click();
   await expect(page.locator('html')).toHaveAttribute('data-permission-requests', '1');
+  const fallback = page.getByRole('dialog', { name: '没有看到设备？', exact: true });
+  await expect(fallback).toBeVisible();
+  await expect(fallback).not.toContainText(/HID|Serial|Neo75|TOFU/);
+  await expect(page.locator('html')).not.toHaveAttribute('data-serial-requests', '1');
+  await fallback.getByRole('button', { name: '继续查找', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-serial-requests', '1');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.connected-card')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-test('device switching keeps separate drafts and tester shortcuts do not undo configuration', async ({
+test('separate demos keep their drafts and tester shortcuts do not undo configuration', async ({
   page,
+  context,
 }) => {
   await demo(page);
   await remapFirstKey(page);
   await page.getByLabel('返回设备中心', { exact: true }).click();
   await expect(page.locator('.connected-card')).toHaveCount(0);
-  await page.getByRole('button', { name: '体验演示' }).click();
-  await page.getByRole('button', { name: '演示 TOFU PAD', exact: true }).click();
-  await expect(page.getByRole('group', { name: 'TOFU PAD 基础层可视化键盘' })).toBeVisible();
-  await page.getByLabel('返回设备中心', { exact: true }).click();
-  await page.getByRole('button', { name: '继续 Neo75 Cu 演示' }).click();
+  const tofu = await context.newPage();
+  await demo(tofu, 'TOFU PAD');
+  await expect(tofu.getByRole('group', { name: 'TOFU PAD 基础层可视化键盘' })).toBeVisible();
+  await tofu.close();
+  await page.getByRole('button', { name: '体验演示', exact: true }).click();
   await expect(page.locator('.save-state')).toContainText('1 个按键');
   await page.getByRole('button', { name: '按键测试', exact: true }).click();
   await page.keyboard.press('Control+z');
   await expect(page.locator('.save-state')).toContainText('1 个按键');
+});
+
+test('the demo opens Neo75 Cu directly and an explicit demo URL never scans real devices', async ({
+  page,
+}) => {
+  await demo(page, 'Neo75 Cu', true);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Neo75 Cu 基础层可视化键盘' })).toBeVisible();
+  await mockConnectedKeyboard(page);
+  for (const model of ['neo75cu', 'tofu-pad']) {
+    await page.goto(`/?demo=${model}`);
+    await expect(page.locator('.connection-badge')).toHaveText('演示模式');
+    await expect(page.locator('html')).not.toHaveAttribute('data-device-scanned', '1');
+    await expect(page.locator('html')).not.toHaveAttribute('data-device-opened', '1');
+  }
+});
+
+test('a connected Neo stays connected while its demo opens in an isolated tab', async ({
+  page,
+  context,
+}) => {
+  await mockConnectedKeyboard(page);
+  await page.goto('/');
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  const opening = context.waitForEvent('page');
+  await page.getByRole('button', { name: '体验演示', exact: true }).click();
+  const preview = await opening;
+  await expect(preview).toHaveURL(/\?demo=neo75cu$/);
+  await expect(preview.locator('.connection-badge')).toHaveText('演示模式');
+  expect(await preview.evaluate(() => window.opener === null)).toBe(true);
+  await remapFirstKey(preview);
+  await expect(preview.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.locator('html')).not.toHaveAttribute('data-device-closed', '1');
+  await preview.close();
+  await page.getByLabel('Neo75 Cu 开始配置', { exact: true }).click();
+  await expect(page.locator('.connection-badge')).toHaveText('USB 已连接');
+  await expect(page.locator('.save-state')).toHaveText('已保存到键盘');
+});
+
+test('adding another device uses the remaining connection path without asking for a protocol', async ({
+  page,
+}) => {
+  await mockConnectedKeyboard(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', {
+      configurable: true,
+      value: Object.assign(new EventTarget(), {
+        getPorts: async () => [],
+        requestPort: async () => {
+          document.documentElement.dataset.serialRequests = '1';
+          throw new DOMException('Cancelled', 'NotFoundError');
+        },
+      }),
+    });
+  });
+  await page.goto('/');
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await page.getByTestId('connect-device').click();
+  await expect(page.locator('html')).toHaveAttribute('data-serial-requests', '1');
+  await expect(page.getByRole('dialog', { name: '没有看到设备？' })).toBeVisible();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.locator('.sidebar')).toHaveCount(0);
+});
+
+test('a permission failure is shown directly without offering an unrelated device list', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'hid', {
+      configurable: true,
+      value: Object.assign(new EventTarget(), {
+        getDevices: async () => [],
+        requestDevice: async () => {
+          throw new DOMException('设备访问被浏览器阻止', 'SecurityError');
+        },
+      }),
+    });
+  });
+  await page.goto('/');
+  await page.getByTestId('connect-device').click();
+  await expect(page.getByRole('alert')).toContainText('设备访问被浏览器阻止');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByTestId('connect-device')).toBeEnabled();
 });
 
 test('home keeps device settings private to the workspace and help lists supported models', async ({
@@ -598,6 +706,7 @@ test('a serial open failure gives a recovery hint without claiming a connection 
   page,
 }) => {
   await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'hid', { value: undefined, configurable: true });
     const port = {
       getInfo: () => ({ usbVendorId: 0x9d5b, usbProductId: 0x2566 }),
       open: async () => {
@@ -621,13 +730,14 @@ test('a serial open failure gives a recovery hint without claiming a connection 
   await expect(page.getByRole('alert')).not.toContainText('Failed to execute');
   await expect(page.locator('.connected-card')).toHaveCount(0);
   await expect(page.locator('html')).not.toHaveAttribute('data-closed-foreign-port', '1');
-  await expect(page.getByTestId('connect-serial')).toBeEnabled();
+  await expect(page.getByTestId('connect-device')).toBeEnabled();
   await page.getByRole('button', { name: '关闭提示', exact: true }).click();
-  await page.getByTestId('connect-serial').click();
+  await page.getByTestId('connect-device').click();
   await expect(page.getByRole('alert')).toContainText('关闭其他驱动页面');
 });
 test('profiles belong to the selected keyboard and cannot import another model', async ({
   page,
+  context,
 }) => {
   await demo(page);
   await page.getByRole('button', { name: '配置管理', exact: true }).click();
@@ -637,17 +747,14 @@ test('profiles belong to the selected keyboard and cannot import another model',
   await page.getByRole('button', { name: '导出 Neo only', exact: true }).click();
   const profile = await download;
   const path = await profile.path();
-  await page.getByLabel('返回设备中心', { exact: true }).click();
-  await page.getByRole('button', { name: '体验演示', exact: true }).click();
-  await page.getByRole('button', { name: '演示 TOFU PAD', exact: true }).click();
-  await page.getByRole('button', { name: '配置管理', exact: true }).click();
-  await expect(page.locator('.profile-row')).toHaveCount(0);
-  await page.locator('input[type=file]').setInputFiles(path!);
-  await expect(page.getByRole('alert')).toContainText('此配置属于 Neo75 Cu');
-  await expect(page.locator('.profile-row')).toHaveCount(0);
-  await page.getByLabel('返回设备中心', { exact: true }).click();
-  await page.getByRole('button', { name: '继续 Neo75 Cu 演示' }).click();
-  await page.getByRole('button', { name: '配置管理', exact: true }).click();
+  const tofu = await context.newPage();
+  await demo(tofu, 'TOFU PAD');
+  await tofu.getByRole('button', { name: '配置管理', exact: true }).click();
+  await expect(tofu.locator('.profile-row')).toHaveCount(0);
+  await tofu.locator('input[type=file]').setInputFiles(path!);
+  await expect(tofu.getByRole('alert')).toContainText('此配置属于 Neo75 Cu');
+  await expect(tofu.locator('.profile-row')).toHaveCount(0);
+  await tofu.close();
   await expect(page.locator('.profile-row')).toContainText('Neo only');
 });
 test('tester scales to mobile, keeps coverage across layouts and uses Mac legends', async ({

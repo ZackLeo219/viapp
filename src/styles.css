@@ -1408,52 +1408,6 @@ p {
 .breadcrumb button:hover {
   color: #4c6532;
 }
-.connection-choices {
-  display: grid;
-  gap: 12px;
-}
-.connection-choices > button {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  border: 1px solid #dfe6d3;
-  background: #f8faf2;
-  padding: 20px 17px;
-  border-radius: 8px;
-  text-align: left;
-  color: #4e6340;
-}
-.connection-choices > button:not(:disabled):hover {
-  background: #eef5df;
-  border-color: #adc58c;
-}
-.connection-choices > button > div:nth-child(2) {
-  flex: 1;
-}
-.connection-choices strong {
-  font-size: 16px;
-  font-weight: 550;
-}
-.connection-choices p {
-  font-size: 10px;
-  margin-top: 8px;
-  color: var(--muted);
-  line-height: 1.7;
-}
-.connection-choices .device-mini {
-  width: 90px;
-  height: 58px;
-}
-.connecting-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 20px;
-}
-.connection-error {
-  color: #a15840 !important;
-  margin-top: 16px;
-}
 @media (max-width: 790px) {
   .hub-view .main-content {
     padding-top: 28px;
@@ -1466,20 +1420,6 @@ p {
   }
   .workspace-view .nav-item {
     padding: 9px;
-  }
-  .connection-choices .device-mini {
-    width: 62px;
-    height: 46px;
-  }
-  .connection-choices > button {
-    gap: 12px;
-    padding: 15px 12px;
-  }
-  .connection-choices strong {
-    font-size: 14px;
-  }
-  .connection-choices p {
-    font-size: 11px;
   }
   .breadcrumb {
     gap: 7px;

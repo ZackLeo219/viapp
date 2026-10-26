@@ -93,6 +93,8 @@
   font-size: 11px;
   color: var(--muted);
   margin-top: 13px;
+  text-align: center;
+  line-height: 1.7;
 }
 .hub-bottom {
   display: flex;

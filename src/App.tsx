@@ -50,7 +50,6 @@ import { transitionWorkspace } from './components/workspace-transition';
 import { watchDevices } from './state/discovery';
 import { actionsFor, bindingFor, labelFor, KEY_ACTIONS, type KeyAction } from './domain/keycodes';
 import { changesBetween, MODEL_NAMES, type ModelId } from './domain/types';
-import { previewSnapshot } from './domain/demo';
 import { decodeMacro, encodeMacro, type MacroStep } from './domain/macros';
 import { exportProfile, parseProfile, type Profile } from './domain/profiles';
 import { listProfiles, removeProfile, saveProfile } from './state/database';
@@ -109,9 +108,20 @@ export default function App() {
   const s = useWorkspace();
   const [help, setHelp] = useState(false);
   const [review, setReview] = useState(false);
-  const [connectionDialog, setConnectionDialog] = useState<'demo' | null>(null);
+  const [connectionFallback, setConnectionFallback] = useState<'hid' | 'serial' | null>(null);
+  const [initialDemo] = useState<ModelId | null>(() => {
+    const model = new URLSearchParams(window.location.search).get('demo');
+    return model === 'neo75cu' || model === 'tofu-pad' ? model : null;
+  });
   useEffect(watchAutoSave, []);
-  useEffect(watchDevices, []);
+  useEffect(() => {
+    // A dedicated demo tab must not claim an already-authorized keyboard.
+    if (initialDemo) {
+      void useWorkspace.getState().connect(initialDemo, true);
+      return;
+    }
+    return watchDevices();
+  }, [initialDemo]);
   const hub = s.page === 'devices';
   const inWorkspace = s.workspaceOpen;
   const unsaved = hasUnsavedDrafts(s);
@@ -144,7 +154,7 @@ export default function App() {
         s.page !== 'keymap' ||
         help ||
         review ||
-        connectionDialog !== null ||
+        connectionFallback !== null ||
         e.defaultPrevented ||
         !(e.ctrlKey || e.metaKey) ||
         e.key.toLowerCase() !== 'z' ||
@@ -158,11 +168,34 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [s.undo, s.redo, s.page, help, review, connectionDialog]);
-  const connect = (model: ModelId) => {
-    void s.connect(model, connectionDialog === 'demo').then((ok) => {
-      if (ok) setConnectionDialog(null);
+  }, [s.undo, s.redo, s.page, help, review, connectionFallback]);
+  const authorize = (transport?: 'hid' | 'serial', offerFallback = true) => {
+    const state = useWorkspace.getState();
+    if (isWorkspaceBusy(state)) return;
+    const preferred =
+      transport ??
+      (navigator.serial &&
+      (!navigator.hid ||
+        (state.sessions.neo75cu?.connection === 'device' &&
+          state.sessions['tofu-pad']?.connection !== 'device'))
+        ? 'serial'
+        : 'hid');
+    // Native permission requests must keep the user's click activation.
+    void state.authorize(preferred).then((ok) => {
+      const next = preferred === 'hid' ? 'serial' : 'hid';
+      if (!ok && offerFallback && !useWorkspace.getState().error && navigator[next])
+        setConnectionFallback(next);
     });
+  };
+  const openDemo = () => {
+    if (useWorkspace.getState().sessions.neo75cu?.connection === 'device') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('demo', 'neo75cu');
+      url.hash = '';
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    void s.connect('neo75cu', true);
   };
   return (
     <div
@@ -304,7 +337,7 @@ export default function App() {
               {!hub && s.connection === 'offline' && inWorkspace && (
                 <Button
                   primary
-                  onClick={() => void s.authorize(s.model === 'tofu-pad' ? 'serial' : 'hid')}
+                  onClick={() => authorize(s.model === 'tofu-pad' ? 'serial' : 'hid')}
                   disabled={busy}
                 >
                   {busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}连接键盘
@@ -358,17 +391,12 @@ export default function App() {
               </button>
             </div>
           )}
-          {hub && (
-            <DeviceHub
-              onConnect={() => void s.authorize('hid')}
-              onDemo={() => setConnectionDialog('demo')}
-            />
-          )}
+          {hub && <DeviceHub onConnect={() => authorize()} onDemo={openDemo} />}
           {s.page === 'keymap' && <KeymapPage key={s.model} />}
           {s.page === 'macros' && <MacrosPage />}
           {s.page === 'profiles' && inWorkspace && <ProfilesPage key={s.model} />}
           {s.page === 'test' && inWorkspace && (
-            <TesterPage key={s.model} suspended={help || review || connectionDialog !== null} />
+            <TesterPage key={s.model} suspended={help || review || connectionFallback !== null} />
           )}
           {inWorkspace && (
             <footer className="workspace-footer">
@@ -472,43 +500,29 @@ export default function App() {
         )}
       </div>
       <Modal
-        open={connectionDialog !== null}
+        open={connectionFallback !== null}
         onOpenChange={(open) => {
-          if (!open && !busy) setConnectionDialog(null);
+          if (!open && !busy) setConnectionFallback(null);
         }}
-        title="选择演示设备"
-        description="演示配置不会修改设备。"
+        title="没有看到设备？"
+        description="可继续打开另一个 USB 设备列表。"
       >
-        <div className="connection-choices">
-          {(['neo75cu', 'tofu-pad'] as ModelId[]).map((model) => (
-            <button
-              key={model}
-              onClick={() => connect(model)}
-              disabled={busy}
-              aria-label={`演示 ${MODEL_NAMES[model]}`}
-            >
-              <div className="device-mini">
-                <Keyboard snapshot={previewSnapshot(model)} layerId={0} miniature />
-              </div>
-              <div>
-                <strong>{MODEL_NAMES[model]}</strong>
-                <p>{model === 'neo75cu' ? '原装三模 PCB · USB 模式' : '原装双模 PCB · USB'}</p>
-              </div>
-              <ArrowRight size={18} />
-            </button>
-          ))}
+        <div className="modal-actions">
+          <Button onClick={() => setConnectionFallback(null)} disabled={busy}>
+            取消
+          </Button>
+          <Button
+            primary
+            onClick={() => {
+              if (!connectionFallback) return;
+              authorize(connectionFallback, false);
+              setConnectionFallback(null);
+            }}
+            disabled={busy}
+          >
+            继续查找 <ArrowRight size={16} />
+          </Button>
         </div>
-        {busy && (
-          <p className="connecting-progress" role="status">
-            <LoaderCircle size={16} className="spin" />
-            {s.progress}
-          </p>
-        )}
-        {s.error && (
-          <p className="connection-error" role="alert">
-            {s.error}
-          </p>
-        )}
       </Modal>
       <Modal
         open={review}
@@ -548,18 +562,18 @@ export default function App() {
         open={help}
         onOpenChange={setHelp}
         title="连接帮助"
-        description="使用桌面版 Chrome / Edge，通过 USB 连接。"
+        description="使用桌面版 Chrome / Edge 打开网页。"
       >
         <div className="help-content">
           <h3>连接设备</h3>
           <ol>
-            <li>插入数据线，将键盘切换到有线模式。</li>
-            <li>首次使用点击「连接设备」授权，之后会自动识别。</li>
+            <li>接入 USB 数据线或受支持的 2.4 GHz 接收器，并切换到对应模式。</li>
+            <li>首次使用点击「添加设备」授权，之后会自动识别。</li>
             <li>点击已连接的设备卡片，开始配置。</li>
           </ol>
           <h3>无法连接</h3>
           <p>
-            授权列表为空时，尝试首页的「其他连接方式」。确认线缆支持数据传输，并关闭其他配置页面。设备提示锁定时，请按原厂说明解锁。Linux
+            授权列表为空时，关闭列表后点击「继续查找」。确认线缆支持数据传输，并关闭其他配置页面。设备提示锁定时，请按原厂说明解锁。Linux
             可能需要设置 USB 或串口访问权限。
           </p>
           <h3>目前支持的型号</h3>
@@ -573,7 +587,7 @@ export default function App() {
               <span>原装双模 PCB</span>
             </li>
           </ul>
-          <p>支持 USB 配置。2.4G 尚未验证，蓝牙不支持配置。</p>
+          <p>USB 有线连接已验证；2.4 GHz 接收器待验证。蓝牙不支持网页配置。</p>
           <div className="help-links">
             <a href="https://github.com/ZackLeo219/viapp#使用" target="_blank" rel="noreferrer">
               使用文档 ↗
@@ -601,7 +615,6 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
   const s = useWorkspace();
   const busy = isWorkspaceBusy(s);
   const devices = Object.values(s.sessions).filter((session) => session.connection === 'device');
-  const demos = Object.values(s.sessions).filter((session) => session.connection === 'demo');
   return (
     <div className={`device-hub ${devices.length ? 'has-devices' : 'empty-hub'}`}>
       <div className="hub-devices-stage">
@@ -656,31 +669,15 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
       <div className="hub-connect">
         <Button primary onClick={onConnect} disabled={busy} data-testid="connect-device">
           <Plus size={17} />
-          {busy ? '正在连接' : devices.length ? '添加设备' : '连接设备'}
+          {busy ? '正在连接' : '添加设备'}
         </Button>
         {!devices.length && <h2>请连接设备</h2>}
-        <p>使用 USB 数据线连接</p>
+        <p>通过 USB 数据线或受支持的 2.4 GHz 接收器连接</p>
       </div>
       <div className="hub-bottom">
-        <button
-          onClick={() => void s.authorize('serial')}
-          disabled={busy}
-          data-testid="connect-serial"
-        >
-          其他连接方式
-        </button>
         <button onClick={onDemo} disabled={busy}>
           体验演示 <ArrowRight size={13} />
         </button>
-        {demos.map((session) => (
-          <button
-            key={session.model}
-            onClick={() => transitionWorkspace(() => s.openDevice(session.model))}
-            disabled={busy}
-          >
-            继续 {session.draft.name} 演示 <ArrowRight size={13} />
-          </button>
-        ))}
       </div>
     </div>
   );

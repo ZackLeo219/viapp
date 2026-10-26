@@ -113,9 +113,7 @@ try {
   let count = 0;
   for (const model of ['neo75cu', 'tofu-pad']) {
     await call('Page.bringToFront');
-    await click(
-      model === 'neo75cu' ? '[data-testid="connect-device"]' : '[data-testid="connect-serial"]',
-    );
+    await click('[data-testid="connect-device"]');
     const choice = await promisify(execFile)(
       'powershell.exe',
       [
