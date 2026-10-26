@@ -1,5 +1,90 @@
 import { test, expect, type Page } from '@playwright/test';
 
+declare global {
+  interface Window {
+    __transitionFrame: { ready: boolean; animations: Animation[]; transition: ViewTransition };
+  }
+}
+
+for (const width of [1536, 390]) {
+  test(`keyboard transition has one visible image and preserves its shape at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 960 });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await mockConnectedKeyboard(page);
+    await page.goto('/');
+    await expect(page.locator('.connected-card')).toHaveCount(1);
+    await page.evaluate(() => {
+      const start = document.startViewTransition.bind(document);
+      document.startViewTransition = (update) => {
+        const transition = start(update);
+        const frame = { ready: false, animations: [] as Animation[], transition };
+        window.__transitionFrame = frame;
+        void transition.ready.then(() => {
+          frame.animations = document
+            .getAnimations()
+            .filter((animation) =>
+              (animation.effect as KeyframeEffect)?.pseudoElement?.includes('view-transition'),
+            );
+          frame.animations.forEach((animation) => {
+            animation.pause();
+            animation.currentTime = 0;
+          });
+          frame.ready = true;
+        });
+        return transition;
+      };
+    });
+    for (const direction of ['enter', 'return']) {
+      if (direction === 'enter')
+        await page.getByLabel('Neo75 Cu 开始配置', { exact: true }).click();
+      else
+        await page
+          .getByRole('navigation', { name: '主导航' })
+          .getByRole('button', { name: '设备中心', exact: true })
+          .click();
+      await page.waitForFunction(() => window.__transitionFrame.ready);
+      for (const fraction of [0.25, 0.5, 0.75]) {
+        const frame = await page.evaluate((fraction) => {
+          const animations = window.__transitionFrame.animations;
+          animations.forEach((animation) => {
+            animation.currentTime = fraction * Number(animation.effect!.getTiming().duration);
+          });
+          const style = (pseudo: string) => getComputedStyle(document.documentElement, pseudo);
+          const visible = (pseudo: string) => {
+            const s = style(pseudo);
+            return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0.01;
+          };
+          const group = style('::view-transition-group(keyboard-neo75cu)');
+          const svg = document.querySelector<SVGSVGElement>('.keyboard-svg')!;
+          const bounds = svg.viewBox.baseVal;
+          return {
+            animationCount: animations.length,
+            visibleCopies: ['old', 'new'].filter((state) =>
+              visible(`::view-transition-${state}(keyboard-neo75cu)`),
+            ).length,
+            oldPageVisible: visible('::view-transition-old(root)'),
+            frameRatio: parseFloat(group.width) / parseFloat(group.height),
+            drawingRatio: bounds.width / bounds.height,
+          };
+        }, fraction);
+        expect(frame.animationCount).toBeGreaterThan(0);
+        expect(frame.visibleCopies).toBe(1);
+        expect(frame.oldPageVisible).toBe(false);
+        expect(frame.frameRatio).toBeCloseTo(frame.drawingRatio, 2);
+      }
+      await page.evaluate(async () => {
+        const { animations, transition } = window.__transitionFrame;
+        animations.forEach((animation) => animation.finish());
+        await transition.finished;
+      });
+    }
+    await expect(page.locator('.connected-card')).toHaveCount(1);
+    await expect(page.locator('.sidebar')).toHaveCount(0);
+  });
+}
+
 for (const model of ['Neo75 Cu', 'TOFU PAD']) {
   test(`${model} saves ordinary edits by default and undo updates the device`, async ({ page }) => {
     await demo(page, model, true);

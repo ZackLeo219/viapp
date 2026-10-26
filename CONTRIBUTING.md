@@ -20,7 +20,7 @@ Contributions are welcome. Please include the original PCB revision, firmware in
 4. 首次运行浏览器测试前执行 `pnpm exec playwright install chromium`，再执行 `pnpm test:e2e`。
 5. 提交 PR，说明使用场景、改动和验证结果。界面改动附电脑及窄屏截图。
 
-## 打包与部署
+## 本地运行与打包
 
 网页使用 React、TypeScript 和 Vite。`pnpm dev` 默认运行在 `http://localhost:5173/`；WSL 开发时，用 Windows 的 Chrome / Edge 连接硬件。
 
@@ -29,8 +29,6 @@ pnpm build
 pnpm package:offline  # 需要 Go 1.23+，生成 Windows、Linux 和 macOS 启动器
 pnpm test:package     # 检查当前系统的离线包
 ```
-
-部署到自己的 GitHub Pages：将仓库设为公开，在 Settings → Pages 中选择 GitHub Actions，再向 `main` 推送代码。现有工作流会测试、构建并发布，不需要另购服务器或域名。
 
 ## 新增设备
 

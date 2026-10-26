@@ -595,11 +595,13 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
                   disabled={busy}
                   aria-label={`${session.draft.name} 开始配置`}
                 >
-                  <div
-                    className="connected-visual"
-                    style={{ viewTransitionName: `keyboard-${session.model}` }}
-                  >
-                    <Keyboard snapshot={session.draft} layerId={session.layerId} miniature />
+                  <div className="connected-visual">
+                    <Keyboard
+                      snapshot={session.draft}
+                      layerId={session.layerId}
+                      miniature
+                      transitionName={`keyboard-${session.model}`}
+                    />
                   </div>
                   <div className="connected-card-bottom">
                     <div>
@@ -738,12 +740,13 @@ function KeymapPage() {
             ))}
           </div>
         </div>
-        <div className="keyboard-stage" style={{ viewTransitionName: `keyboard-${s.model}` }}>
+        <div className="keyboard-stage">
           <div className="stage-label">
             <span>{s.model === 'neo75cu' ? '75%' : '数字键盘'}</span>
             <span>{s.layerId === s.draft.layers[0].id ? '基础层' : '功能层'}</span>
           </div>
           <Keyboard
+            transitionName={`keyboard-${s.model}`}
             snapshot={s.draft}
             baseline={s.baseline}
             layerId={s.layerId}

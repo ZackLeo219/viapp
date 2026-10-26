@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: 'VIAPP 键盘工作台',
         short_name: 'VIAPP',
-        description: '键位设置、方案管理与按键测试',
+        description: '网页键盘配置工具 | Web-based keyboard configurator',
         lang: 'zh-CN',
         theme_color: '#161b19',
         background_color: '#f6f7f3',

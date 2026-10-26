@@ -904,12 +904,29 @@ p {
   pointer-events: none;
 }
 ::view-transition-group(*) {
-  animation-duration: 340ms;
+  animation-duration: 300ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
-::view-transition-old(root),
+/* Move a single keyboard image. Cross-fading differently angled snapshots
+   produces a second outline, even when the surrounding page is aligned. */
+::view-transition-old(*) {
+  display: none;
+  animation: none;
+}
+::view-transition-new(*) {
+  animation: none;
+  mix-blend-mode: normal;
+}
 ::view-transition-new(root) {
-  animation-duration: 220ms;
+  animation: workspace-surface-in 180ms ease-out both;
+}
+@keyframes workspace-surface-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @supports not (view-transition-name: none) {
   @media (prefers-reduced-motion: no-preference) {
@@ -1488,6 +1505,7 @@ p {
   }
   .keyboard-svg {
     max-height: 340px;
+    --keyboard-max-height: 340px;
   }
   .inspector {
     max-height: 640px;
@@ -1608,6 +1626,7 @@ p {
   }
   .keyboard-svg {
     max-height: 270px;
+    --keyboard-max-height: 270px;
   }
   .inspector .panel-heading {
     padding-bottom: 12px;
@@ -1788,6 +1807,7 @@ p {
   }
   .keyboard-svg.numpad {
     max-height: 240px;
+    --keyboard-max-height: 240px;
     margin-inline: auto;
   }
   .stage-label,

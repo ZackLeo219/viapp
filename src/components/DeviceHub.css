@@ -169,13 +169,15 @@
   padding: 34px 26px;
 }
 .connected-visual .keyboard-svg {
+  --keyboard-max-height: 230px;
   max-height: 230px;
   transform: rotate(-5deg);
   filter: drop-shadow(0 12px 7px #4a5b3622);
 }
 .connected-visual .keyboard-svg.numpad {
   width: 125px;
-  height: 210px;
+  max-width: 125px;
+  height: auto;
 }
 .connected-card-bottom {
   display: flex;

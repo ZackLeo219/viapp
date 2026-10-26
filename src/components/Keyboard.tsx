@@ -29,6 +29,7 @@ export function Keyboard({
   selected,
   onSelect,
   miniature = false,
+  transitionName,
 }: {
   snapshot: DeviceSnapshot;
   baseline?: DeviceSnapshot;
@@ -36,6 +37,7 @@ export function Keyboard({
   selected?: number | null;
   onSelect?: (index: number, activate?: boolean) => void;
   miniature?: boolean;
+  transitionName?: string;
 }) {
   const layer = snapshot.layers.find((l) => l.id === layerId) ?? snapshot.layers[0];
   const original = baseline?.layers.find((l) => l.id === layer.id);
@@ -50,6 +52,16 @@ export function Keyboard({
   return (
     <svg
       className={`keyboard-svg ${snapshot.model === 'tofu-pad' ? 'numpad' : ''} ${miniature ? 'miniature' : ''}`}
+      style={
+        transitionName
+          ? {
+              viewTransitionName: transitionName,
+              // Match the snapshot's box to the drawing, without SVG letterboxing.
+              width: `min(100%, calc(var(--keyboard-max-height, 285px) * ${bounds.width / bounds.height}))`,
+              height: 'auto',
+            }
+          : undefined
+      }
       viewBox={`0 0 ${bounds.width} ${bounds.height}`}
       role={miniature ? 'img' : 'group'}
       aria-label={`${snapshot.name} ${miniature ? '外观示意' : `${layer.name}可视化键盘`}`}
