@@ -1,5 +1,21 @@
 export type TesterLayoutId = 'full' | 'tkl' | 'compact' | 'numpad';
 export type KeyLegends = 'win' | 'mac';
+export type ShiftSide = 'Left' | 'Right';
+
+// Some Windows input paths deliver Shift with an empty code and location 0.
+// That event has no side information: use an explicit local calibration only.
+export function testEventCode(
+  event: Pick<KeyboardEvent, 'code' | 'key' | 'location'>,
+  shiftSide: ShiftSide | null = null,
+): string {
+  if (event.code && event.code !== 'Unidentified') return event.code;
+  if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) {
+    if (event.location === 1) return `${event.key}Left`;
+    if (event.location === 2) return `${event.key}Right`;
+    if (event.key === 'Shift') return `Shift${shiftSide ?? 'Unknown'}`;
+  }
+  return '';
+}
 export interface TestKey {
   code: string | null;
   label: string;
@@ -134,6 +150,7 @@ const labels = new Map(
   ),
 );
 export function testKeyLabel(code: string, legends: KeyLegends): string {
+  if (code === 'ShiftUnknown') return 'Shift · 未定位';
   if (legends === 'mac') {
     if (code.startsWith('Meta')) return '⌘';
     if (code.startsWith('Alt')) return '⌥';
@@ -155,12 +172,24 @@ export type TesterAction =
   | { type: 'up'; code: string }
   | { type: 'start' }
   | { type: 'pause' }
+  | { type: 'identifyShift'; side: ShiftSide }
   | { type: 'reset' };
 export function freshTester(): TesterState {
   return { listening: false, held: [], counts: {}, total: 0, peak: 0, recent: [], escapeAt: null };
 }
 export function testerReducer(state: TesterState, action: TesterAction): TesterState {
   if (action.type === 'reset') return { ...freshTester(), listening: state.listening };
+  if (action.type === 'identifyShift') {
+    const code = `Shift${action.side}`;
+    const { ShiftUnknown: unknown = 0, ...counts } = state.counts;
+    if (!unknown) return state;
+    return {
+      ...state,
+      counts: { ...counts, [code]: (counts[code] ?? 0) + unknown },
+      held: [...new Set(state.held.map((c) => (c === 'ShiftUnknown' ? code : c)))],
+      recent: state.recent.map((c) => (c === 'ShiftUnknown' ? code : c)),
+    };
+  }
   if (action.type === 'pause') return { ...state, listening: false, held: [], escapeAt: null };
   if (action.type === 'start') return { ...state, listening: true, held: [], escapeAt: null };
   if (!state.listening) return state;

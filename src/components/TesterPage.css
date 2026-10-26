@@ -4,6 +4,30 @@
 .tester-panel {
   overflow: hidden;
 }
+.tester-identify {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 28px;
+  border-bottom: 1px solid #e4e6d8;
+  background: #f4f5e9;
+  color: #677451;
+  font-size: 12px;
+}
+.tester-identify > span {
+  margin-right: auto;
+}
+.tester-identify .button {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+.tester-reset-location {
+  margin-top: 12px;
+  color: #536c3b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .tester-toolbar {
   display: flex;
   align-items: center;

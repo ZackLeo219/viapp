@@ -1,59 +1,117 @@
-import { useEffect, useReducer, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import {
   freshTester,
   testerReducer,
   TESTER_LAYOUTS,
   testKeyLabel,
+  testEventCode,
   type KeyLegends,
+  type ShiftSide,
   type TesterLayoutId,
 } from '../domain/tester';
+import type { ModelId } from '../domain/types';
 import './TesterPage.css';
 
 type Locks = Record<'CapsLock' | 'NumLock' | 'ScrollLock', boolean | null>;
 const unknownLocks: Locks = { CapsLock: null, NumLock: null, ScrollLock: null };
 const unit = 50;
-export function TesterPage() {
+export function TesterPage({ model, suspended = false }: { model: ModelId; suspended?: boolean }) {
   const [state, dispatch] = useReducer(testerReducer, undefined, freshTester);
   const [layoutId, setLayoutId] = useState<TesterLayoutId>('full');
   const [legends, setLegends] = useState<KeyLegends>('win');
   const [showCounts, setShowCounts] = useState(false);
   const [locks, setLocks] = useState<Locks>(unknownLocks);
+  const preferenceKey = `viapp:tester-shift:${model}`;
+  const [shiftSide, setShiftSide] = useState<ShiftSide | null>(() => {
+    try {
+      const saved = localStorage.getItem(preferenceKey);
+      return saved === 'Left' || saved === 'Right' ? saved : null;
+    } catch {
+      return null;
+    }
+  });
   const stage = useRef<HTMLDivElement>(null);
+  const resumeOnFocus = useRef(false);
   const layout = TESTER_LAYOUTS.find((l) => l.id === layoutId)!;
   const testable = layout.keys.filter((k) => k.code !== null);
   const tested = testable.filter((k) => state.counts[k.code!] > 0).length;
   const progress = Math.round((tested / testable.length) * 100);
   const start = () => {
+    resumeOnFocus.current = false;
     stage.current?.focus({ preventScroll: true });
     dispatch({ type: 'start' });
   };
   useEffect(() => {
     stage.current?.focus({ preventScroll: true });
-    const pause = () => dispatch({ type: 'pause' });
+    dispatch({ type: 'start' });
+  }, []);
+  useEffect(() => {
+    if (suspended) {
+      resumeOnFocus.current = false;
+      dispatch({ type: 'pause' });
+    }
+  }, [suspended]);
+  useEffect(() => {
+    const pause = () => {
+      if (state.listening) resumeOnFocus.current = true;
+      dispatch({ type: 'pause' });
+    };
+    const resume = () => {
+      if (resumeOnFocus.current && !suspended && !document.hidden) {
+        resumeOnFocus.current = false;
+        dispatch({ type: 'start' });
+      }
+    };
     const visibility = () => {
       if (document.hidden) pause();
+      else resume();
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (!state.listening || suspended) return;
+      const code = testEventCode(e, shiftSide);
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) {
+        if (e.type === 'keyup') dispatch({ type: 'up', code });
+        return;
+      }
+      e.preventDefault();
+      setLocks({
+        CapsLock: e.getModifierState('CapsLock'),
+        NumLock: e.getModifierState('NumLock'),
+        ScrollLock: e.getModifierState('ScrollLock'),
+      });
+      if (e.type === 'keydown')
+        dispatch({ type: 'down', code, repeat: e.repeat, time: e.timeStamp });
+      else dispatch({ type: 'up', code });
     };
     window.addEventListener('blur', pause);
+    window.addEventListener('focus', resume);
     document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('keydown', handleKey, true);
+    window.addEventListener('keyup', handleKey, true);
     return () => {
       window.removeEventListener('blur', pause);
+      window.removeEventListener('focus', resume);
       document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('keydown', handleKey, true);
+      window.removeEventListener('keyup', handleKey, true);
     };
-  }, []);
+  }, [state.listening, suspended, shiftSide]);
   useEffect(() => {
     if (!state.listening) setLocks(unknownLocks);
   }, [state.listening]);
-  const handleKey = (e: KeyboardEvent<HTMLDivElement>, type: 'down' | 'up') => {
-    if (!state.listening) return;
-    e.preventDefault();
-    setLocks({
-      CapsLock: e.getModifierState('CapsLock'),
-      NumLock: e.getModifierState('NumLock'),
-      ScrollLock: e.getModifierState('ScrollLock'),
-    });
-    if (type === 'down') dispatch({ type, code: e.code, repeat: e.repeat, time: e.timeStamp });
-    else dispatch({ type, code: e.code });
+  const identifyShift = (side: ShiftSide | null) => {
+    setShiftSide(side);
+    try {
+      if (side) localStorage.setItem(preferenceKey, side);
+      else localStorage.removeItem(preferenceKey);
+    } catch {
+      // Testing still works when storage is unavailable; calibration lasts for this visit.
+    }
+    if (side) dispatch({ type: 'identifyShift', side });
+    else dispatch({ type: 'reset' });
+    stage.current?.focus({ preventScroll: true });
   };
   return (
     <section className="tester">
@@ -122,8 +180,10 @@ export function TesterPage() {
               className="button"
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => {
-                if (state.listening) dispatch({ type: 'pause' });
-                else start();
+                if (state.listening) {
+                  resumeOnFocus.current = false;
+                  dispatch({ type: 'pause' });
+                } else start();
               }}
             >
               {state.listening ? <Pause size={15} /> : <Play size={15} />}
@@ -142,6 +202,17 @@ export function TesterPage() {
             </button>
           </div>
         </div>
+        {!shiftSide && state.counts.ShiftUnknown > 0 && (
+          <div className="tester-identify" role="group" aria-label="定位 Shift">
+            <span>检测到 Shift，请选择刚才按下的位置</span>
+            <button className="button" onClick={() => identifyShift('Left')}>
+              左 Shift
+            </button>
+            <button className="button" onClick={() => identifyShift('Right')}>
+              右 Shift
+            </button>
+          </div>
+        )}
         <div
           ref={stage}
           className={`tester-stage ${state.listening ? 'listening' : ''}`}
@@ -149,13 +220,9 @@ export function TesterPage() {
           role="group"
           aria-label="可视化按键测试"
           aria-describedby="tester-focus-hint"
-          onFocus={() => dispatch({ type: 'start' })}
-          onBlur={() => dispatch({ type: 'pause' })}
           onClick={() => {
             if (!state.listening) start();
           }}
-          onKeyDown={(e) => handleKey(e, 'down')}
-          onKeyUp={(e) => handleKey(e, 'up')}
           onContextMenu={(e) => e.preventDefault()}
         >
           <div className="tester-stage-status" id="tester-focus-hint">
@@ -305,6 +372,17 @@ export function TesterPage() {
           按键按输出键值显示，不区分输入设备。Fn
           和部分系统快捷键无法检测；切换窗口会暂停测试。此页不用于测量硬件延迟。
         </p>
+        {shiftSide && (
+          <button
+            className="tester-reset-location"
+            onClick={() => {
+              identifyShift(null);
+              start();
+            }}
+          >
+            重置 Shift 定位并重新测试
+          </button>
+        )}
       </details>
     </section>
   );

@@ -121,6 +121,7 @@
   padding: 35px 0;
 }
 .connected-card {
+  position: relative;
   width: min(400px, 100%);
   border: 1px solid #dfe4d6;
   border-radius: 17px;
@@ -128,6 +129,33 @@
   overflow: hidden;
   text-align: left;
   box-shadow: 0 8px 25px #34451e04;
+}
+.connected-card-open {
+  display: block;
+  width: 100%;
+  text-align: inherit;
+  border-radius: inherit;
+}
+.connected-card-open:focus-visible {
+  outline-offset: -3px;
+}
+.connected-card-disconnect {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d9e0ce;
+  border-radius: 6px;
+  background: #f6f8f1;
+  color: #68775a;
+  font-size: 11px;
+}
+.connected-card-disconnect:hover:not(:disabled) {
+  background: #e8eddf;
+  color: #35482d;
 }
 .connected-card:hover {
   border-color: #b7c79e;

@@ -171,6 +171,21 @@ try {
   await pause(300);
   const screenshot = await call('Page.captureScreenshot', { format: 'png' });
   await writeFile(join(output, 'connected-devices.png'), Buffer.from(screenshot.data, 'base64'));
+  await click('[aria-label="断开 TOFU PAD"]');
+  await waitFor('document.querySelectorAll(".connected-card").length === 1');
+  if (
+    !(await evaluate(
+      '!!document.querySelector(\'[aria-label="Neo75 Cu 开始配置"]\') && !document.querySelector(".sidebar")',
+    ))
+  )
+    throw new Error('Disconnecting TOFU changed the other device or entered the workspace.');
+  await click('[aria-label="Neo75 Cu 开始配置"]');
+  await waitFor('document.querySelector(".connection-badge")?.textContent === "USB 已连接"');
+  await click('[aria-label="返回设备中心"]');
+  await click('[aria-label="断开 Neo75 Cu"]');
+  await waitFor(
+    'document.querySelectorAll(".connected-card").length === 0 && !!document.querySelector(".empty-hub")',
+  );
   if (errors.length) throw new Error(`Browser errors: ${errors.join(', ')}`);
   await writeFile(
     join(output, 'ui-results.json'),
@@ -183,6 +198,7 @@ try {
         connectionFirst: true,
         separateDrafts: true,
         returnedToCleanState: true,
+        independentCardDisconnect: true,
         hardwareWrites: 0,
         browserErrors: errors,
       },
@@ -191,7 +207,7 @@ try {
     ),
   );
   console.log(
-    'Real browser UI verified: 2 connected devices, automatic reconnect after reload, isolated drafts, clean final state.',
+    'Real browser UI verified: 2 connected devices, automatic reconnect after reload, isolated drafts, independent card disconnects, clean final state.',
   );
 } catch (error) {
   console.error(error);

@@ -52,7 +52,7 @@ interface Workspace {
     options?: { access?: DeviceAccess; automatic?: boolean },
   ): Promise<boolean>;
   authorize(transport: 'hid' | 'serial'): Promise<boolean>;
-  disconnect(): Promise<void>;
+  disconnect(model?: ModelId): Promise<void>;
   refresh(): Promise<void>;
   apply(): Promise<void>;
   edit(index: number, binding: Binding): void;
@@ -263,18 +263,20 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       set({ operation: 'idle', progress: '' });
     }
   },
-  async disconnect() {
+  async disconnect(model = get().model) {
     if (get().operation !== 'idle') return;
-    const model = get().model;
+    rememberCurrent();
     set({ operation: 'reading', progress: '关闭设备连接' });
     try {
       await drivers.get(model)?.close();
       drivers.delete(model);
       set((s) => ({
-        connection: 'offline',
+        ...(s.model === model ? { connection: 'offline' as const } : {}),
+        sessions: s.sessions[model]
+          ? { ...s.sessions, [model]: { ...s.sessions[model], connection: 'offline' } }
+          : s.sessions,
         autoConnectBlocked: [...new Set([...s.autoConnectBlocked, model])],
       }));
-      rememberCurrent();
       log('连接已关闭，当前草稿保留。');
     } catch (e) {
       get().report(e);

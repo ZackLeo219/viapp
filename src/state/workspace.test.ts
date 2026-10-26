@@ -111,6 +111,47 @@ describe('device center and independent sessions', () => {
     expect(state().connection).toBe('device');
     expect(state().sessions.neo75cu?.connection).toBe('offline');
   });
+  it('disconnects one card without switching devices, closing the other driver or losing either draft', async () => {
+    const neo = new HardwareFixture('neo75cu'),
+      tofu = new HardwareFixture('tofu-pad');
+    const closeNeo = vi.spyOn(neo, 'close'),
+      closeTofu = vi.spyOn(tofu, 'close');
+    mocks.neo.mockResolvedValue(neo);
+    mocks.tofu.mockResolvedValue(tofu);
+    await state().connect('neo75cu');
+    state().edit(0, { type: 'via', code: 4 });
+    await state().connect('tofu-pad');
+    state().edit(0, { type: 'zmk', behaviorId: 1, param1: 0x70005, param2: 0 });
+    state().setPage('devices');
+    const tofuDraft = state().draft;
+    const neoDraft = state().sessions.neo75cu!.draft;
+    await state().disconnect('neo75cu');
+    expect(closeNeo).toHaveBeenCalledOnce();
+    expect(closeTofu).not.toHaveBeenCalled();
+    expect(state().model).toBe('tofu-pad');
+    expect(state().page).toBe('devices');
+    expect(state().workspaceOpen).toBe(false);
+    expect(state().connection).toBe('device');
+    expect(state().draft).toEqual(tofuDraft);
+    expect(state().sessions.neo75cu?.draft).toEqual(neoDraft);
+    expect(state().sessions.neo75cu?.connection).toBe('offline');
+    expect(state().autoConnectBlocked).toEqual(['neo75cu']);
+    await state().disconnect('tofu-pad');
+    expect(state().connection).toBe('offline');
+    expect(state().sessions['tofu-pad']?.draft).toEqual(tofuDraft);
+    expect(state().sessions['tofu-pad']?.connection).toBe('offline');
+  });
+  it('does not disconnect a card during an in-progress operation', async () => {
+    const neo = new HardwareFixture('neo75cu');
+    const close = vi.spyOn(neo, 'close');
+    mocks.neo.mockResolvedValue(neo);
+    await state().connect('neo75cu');
+    useWorkspace.setState({ operation: 'saving' });
+    await state().disconnect('neo75cu');
+    expect(close).not.toHaveBeenCalled();
+    expect(state().connection).toBe('device');
+    useWorkspace.setState({ operation: 'idle' });
+  });
   it('reconnecting the same unchanged device keeps a draft and archives it before use', async () => {
     const neo = new HardwareFixture('neo75cu');
     mocks.neo.mockResolvedValue(neo);

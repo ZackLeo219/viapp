@@ -133,6 +133,149 @@ test('tester supports Escape, releases keys on blur and permits keyboard exit', 
   await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
   await expect(page.getByRole('button', { name: '继续测试', exact: true })).toBeVisible();
 });
+test('tester starts on entry and keeps listening after clicking the page or the active navigation item', async ({
+  page,
+}) => {
+  await demo(page);
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  await page.keyboard.press('a');
+  await expect(page.locator('[data-test-code="KeyA"]')).toHaveAttribute('data-count', '1');
+  await page.locator('.tester-recent > span').click();
+  await page.keyboard.press('b');
+  await expect(page.locator('[data-test-code="KeyB"]')).toHaveAttribute('data-count', '1');
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  await page.keyboard.press('ShiftRight');
+  await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-count', '1');
+  await page.getByLabel('测试配列').focus();
+  await page.keyboard.press('Home');
+  await expect(page.locator('[data-test-code="Home"]')).toHaveAttribute('data-state', 'untested');
+  await page.getByRole('button', { name: '按键设置', exact: true }).click();
+  await page.keyboard.press('c');
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  await expect(page.getByTestId('press-count')).toHaveText('0');
+  await page.keyboard.press('d');
+  await expect(page.locator('[data-test-code="KeyD"]')).toHaveAttribute('data-count', '1');
+  await page.keyboard.down('a');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(page.getByTestId('held-count')).toHaveText('0');
+  await page.keyboard.up('a');
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.keyboard.press('e');
+  await expect(page.locator('[data-test-code="KeyE"]')).toHaveAttribute('data-state', 'untested');
+});
+test('a Shift event with no location is visible and can be calibrated without affecting normal left Shift', async ({
+  page,
+}) => {
+  const unknownShift = async (type: 'keydown' | 'keyup') =>
+    page.evaluate((eventType) => {
+      window.dispatchEvent(
+        new KeyboardEvent(eventType, {
+          key: 'Shift',
+          code: '',
+          location: 0,
+          keyCode: 16,
+          shiftKey: eventType === 'keydown',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }, type);
+  await demo(page);
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  await unknownShift('keydown');
+  await expect(page.getByTestId('held-keys')).toContainText('Shift · 未定位');
+  for (const side of ['Left', 'Right'])
+    await expect(page.locator(`[data-test-code="Shift${side}"]`)).toHaveAttribute(
+      'data-state',
+      'untested',
+    );
+  await unknownShift('keyup');
+  await page.getByRole('button', { name: '右 Shift', exact: true }).click();
+  await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-count', '1');
+  await expect(page.getByTestId('press-count')).toHaveText('1');
+  await page.keyboard.down('ShiftLeft');
+  await unknownShift('keydown');
+  for (const side of ['Left', 'Right'])
+    await expect(page.locator(`[data-test-code="Shift${side}"]`)).toHaveAttribute(
+      'data-state',
+      'held',
+    );
+  await unknownShift('keyup');
+  await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute(
+    'data-state',
+    'tested',
+  );
+  await expect(page.locator('[data-test-code="ShiftLeft"]')).toHaveAttribute('data-state', 'held');
+  await page.keyboard.up('ShiftLeft');
+  await expect(page.getByTestId('held-count')).toHaveText('0');
+  await page.reload();
+  await page.getByRole('button', { name: '体验演示', exact: true }).click();
+  await page.getByRole('button', { name: '演示 Neo75 Cu', exact: true }).click();
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  await unknownShift('keydown');
+  await expect(page.locator('[data-test-code="ShiftRight"]')).toHaveAttribute('data-state', 'held');
+  await unknownShift('keyup');
+  await expect(page.getByRole('group', { name: '定位 Shift', exact: true })).toHaveCount(0);
+  await page.getByText('测试说明', { exact: true }).click();
+  await page.getByRole('button', { name: '重置 Shift 定位并重新测试', exact: true }).click();
+  await unknownShift('keydown');
+  await expect(page.getByRole('group', { name: '定位 Shift', exact: true })).toBeVisible();
+  await unknownShift('keyup');
+});
+test('a device card disconnects independently without entering its workspace and can be reconnected', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class KeyboardFixture extends EventTarget {
+      vendorId = 0x36b0;
+      productId = 0x3021;
+      productName = 'NEO75';
+      collections = [{ usagePage: 0xff60, usage: 0x61 }];
+      opened = false;
+      async open() {
+        this.opened = true;
+      }
+      async close() {
+        this.opened = false;
+        document.documentElement.dataset.deviceClosed = '1';
+      }
+      async sendReport(_id: number, data: Uint8Array) {
+        const response = new Uint8Array(data);
+        if (data[0] === 1) response.set([0, 12], 1);
+        else if (data[0] === 0x11) response[1] = 1;
+        else if (![2, 0x12, 0x0c, 0x0d].includes(data[0])) throw new Error('Unexpected write');
+        this.dispatchEvent(
+          Object.assign(new Event('inputreport'), { data: new DataView(response.buffer) }),
+        );
+      }
+    }
+    const keyboard = new KeyboardFixture();
+    const hid = Object.assign(new EventTarget(), {
+      getDevices: async () => [keyboard],
+      requestDevice: async () => [keyboard],
+    });
+    Object.defineProperty(navigator, 'hid', { value: hid, configurable: true });
+  });
+  await page.goto('/');
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '断开 Neo75 Cu', exact: true }).click();
+  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await expect(page.locator('.sidebar')).toHaveCount(0);
+  await expect(page.locator('html')).toHaveAttribute('data-device-closed', '1');
+  await page.evaluate(() => navigator.hid.dispatchEvent(new Event('connect')));
+  await expect(page.getByRole('heading', { name: '请连接设备', exact: true })).toBeVisible();
+  await page.getByTestId('connect-device').click();
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true }).click();
+  await expect(page.locator('.connection-badge')).toHaveText('USB 已连接');
+});
 test('mobile layout remains usable without horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');

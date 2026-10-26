@@ -339,7 +339,13 @@ export default function App() {
           {s.page === 'keymap' && <KeymapPage key={s.model} />}
           {s.page === 'macros' && <MacrosPage />}
           {s.page === 'profiles' && inWorkspace && <ProfilesPage key={s.model} />}
-          {s.page === 'test' && inWorkspace && <TesterPage />}
+          {s.page === 'test' && inWorkspace && (
+            <TesterPage
+              key={s.model}
+              model={s.model}
+              suspended={help || review || connectionDialog !== null}
+            />
+          )}
           {inWorkspace && (
             <footer className="workspace-footer">
               <button onClick={() => setHelp(true)}>
@@ -529,27 +535,37 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
         {devices.length ? (
           <div className="connected-devices">
             {devices.map((session) => (
-              <button
-                className="connected-card"
-                key={session.model}
-                onClick={() => s.openDevice(session.model)}
-                disabled={busy}
-                aria-label={`${session.draft.name} 开始配置`}
-              >
-                <div className="connected-visual">
-                  <Keyboard snapshot={session.draft} layerId={session.layerId} miniature />
-                </div>
-                <div className="connected-card-bottom">
-                  <div>
-                    <h2>{session.draft.name}</h2>
-                    <p>
-                      <span className="status-dot live" />
-                      USB 已连接{isDirty(session) && <span className="draft-tag">未保存</span>}
-                    </p>
+              <article className="connected-card" key={session.model}>
+                <button
+                  className="connected-card-open"
+                  onClick={() => s.openDevice(session.model)}
+                  disabled={busy}
+                  aria-label={`${session.draft.name} 开始配置`}
+                >
+                  <div className="connected-visual">
+                    <Keyboard snapshot={session.draft} layerId={session.layerId} miniature />
                   </div>
-                  <ArrowRight size={20} />
-                </div>
-              </button>
+                  <div className="connected-card-bottom">
+                    <div>
+                      <h2>{session.draft.name}</h2>
+                      <p>
+                        <span className="status-dot live" />
+                        USB 已连接{isDirty(session) && <span className="draft-tag">未保存</span>}
+                      </p>
+                    </div>
+                    <ArrowRight size={20} />
+                  </div>
+                </button>
+                <button
+                  className="connected-card-disconnect"
+                  onClick={() => void s.disconnect(session.model)}
+                  disabled={busy}
+                  aria-label={`断开 ${session.draft.name}`}
+                >
+                  <Unplug size={14} />
+                  断开
+                </button>
+              </article>
             ))}
           </div>
         ) : (
