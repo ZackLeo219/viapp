@@ -1,0 +1,70 @@
+.key-capture {
+  margin: 0 19px 16px;
+}
+.capture-trigger {
+  width: 100%;
+  justify-content: center;
+  color: #4f6936;
+  background: #f1f6e8;
+  border-color: #dce7cb;
+}
+.capture-box {
+  display: flex;
+  align-items: center;
+  background: #edf4e1;
+  border: 1px solid #b2c593;
+  border-radius: 6px;
+  margin-top: 10px;
+  padding: 0 9px 0 0;
+}
+.capture-box > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  font-size: 12px;
+  color: #567438;
+  padding: 14px 12px;
+  border-radius: 5px;
+}
+.capture-box button {
+  padding: 6px;
+  color: #6e815b;
+}
+.key-capture > p {
+  font-size: 11px;
+  color: #987741;
+  line-height: 1.7;
+  margin-top: 10px;
+}
+.inspector-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  min-height: 370px;
+  gap: 20px;
+  color: #98a589;
+}
+.inspector-empty > svg {
+  padding: 20px;
+  width: 72px;
+  height: 72px;
+  border-radius: 15px;
+  background: #f3f6ec;
+  color: #a3b58c;
+}
+.inspector-empty > p {
+  font-size: 12px;
+}
+@media (max-width: 790px) {
+  .inspector-empty {
+    min-height: 140px;
+    grid-auto-flow: column;
+    justify-content: center;
+  }
+  .inspector-empty > svg {
+    width: 53px;
+    height: 53px;
+    padding: 15px;
+  }
+}

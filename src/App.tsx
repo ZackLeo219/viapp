@@ -33,10 +33,12 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { Keyboard } from './components/Keyboard';
 import { TesterPage } from './components/TesterPage';
 import { IdleKeyboard } from './components/IdleKeyboard';
+import { KeyCapture } from './components/KeyCapture';
 import './components/DeviceHub.css';
 import { version } from '../package.json';
 import { Modal } from './components/Modal';
 import { useWorkspace, isDirty, hasUnsavedDrafts } from './state/workspace';
+import { watchDevices } from './state/discovery';
 import { actionsFor, bindingFor, labelFor, KEY_ACTIONS, type KeyAction } from './domain/keycodes';
 import { changesBetween, MODEL_NAMES, type ModelId } from './domain/types';
 import { previewSnapshot } from './domain/demo';
@@ -98,7 +100,8 @@ export default function App() {
   const s = useWorkspace();
   const [help, setHelp] = useState(false);
   const [review, setReview] = useState(false);
-  const [connectionDialog, setConnectionDialog] = useState<'device' | 'demo' | null>(null);
+  const [connectionDialog, setConnectionDialog] = useState<'demo' | null>(null);
+  useEffect(watchDevices, []);
   const hub = s.page === 'devices';
   const inWorkspace = s.workspaceOpen;
   const unsaved = hasUnsavedDrafts(s);
@@ -244,20 +247,6 @@ export default function App() {
           <div className="topbar-right">
             {!inWorkspace && (
               <nav className="hub-tools" aria-label="主导航">
-                {!hub && (
-                  <button onClick={() => s.setPage('devices')} disabled={busy}>
-                    <LayoutGrid size={17} />
-                    设备中心
-                  </button>
-                )}
-                <button
-                  onClick={() => s.setPage('test')}
-                  disabled={busy}
-                  aria-current={s.page === 'test' ? 'page' : undefined}
-                >
-                  <MonitorCheck size={17} />
-                  按键测试
-                </button>
                 <button onClick={() => setHelp(true)} aria-label="连接帮助" title="连接帮助">
                   <CircleHelp size={19} />
                 </button>
@@ -294,7 +283,11 @@ export default function App() {
                 </Button>
               )}
               {!hub && s.connection === 'offline' && inWorkspace && (
-                <Button primary onClick={() => setConnectionDialog('device')} disabled={busy}>
+                <Button
+                  primary
+                  onClick={() => void s.authorize(s.model === 'tofu-pad' ? 'serial' : 'hid')}
+                  disabled={busy}
+                >
                   {busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}连接键盘
                 </Button>
               )}
@@ -339,14 +332,14 @@ export default function App() {
           )}
           {hub && (
             <DeviceHub
-              onConnect={() => setConnectionDialog('device')}
+              onConnect={() => void s.authorize('hid')}
               onDemo={() => setConnectionDialog('demo')}
             />
           )}
           {s.page === 'keymap' && <KeymapPage key={s.model} />}
           {s.page === 'macros' && <MacrosPage />}
           {s.page === 'profiles' && inWorkspace && <ProfilesPage key={s.model} />}
-          {s.page === 'test' && <TesterPage />}
+          {s.page === 'test' && inWorkspace && <TesterPage />}
           {inWorkspace && (
             <footer className="workspace-footer">
               <button onClick={() => setHelp(true)}>
@@ -405,12 +398,8 @@ export default function App() {
         onOpenChange={(open) => {
           if (!open && !busy) setConnectionDialog(null);
         }}
-        title={connectionDialog === 'demo' ? '选择演示设备' : '连接键盘'}
-        description={
-          connectionDialog === 'demo'
-            ? '演示配置不会修改设备。'
-            : '连接 USB 后选择型号，并允许浏览器访问。'
-        }
+        title="选择演示设备"
+        description="演示配置不会修改设备。"
       >
         <div className="connection-choices">
           {(['neo75cu', 'tofu-pad'] as ModelId[]).map((model) => (
@@ -418,7 +407,7 @@ export default function App() {
               key={model}
               onClick={() => connect(model)}
               disabled={busy}
-              aria-label={`${connectionDialog === 'demo' ? '演示' : '连接'} ${MODEL_NAMES[model]}`}
+              aria-label={`演示 ${MODEL_NAMES[model]}`}
             >
               <div className="device-mini">
                 <Keyboard snapshot={previewSnapshot(model)} layerId={0} miniature />
@@ -486,12 +475,12 @@ export default function App() {
           <h3>连接设备</h3>
           <ol>
             <li>插入数据线，将键盘切换到有线模式。</li>
-            <li>点击「连接键盘」，选择型号并授权访问。</li>
+            <li>首次使用点击「连接设备」授权，之后会自动识别。</li>
             <li>点击已连接的设备卡片，开始配置。</li>
           </ol>
           <h3>无法连接</h3>
           <p>
-            确认线缆支持数据传输，关闭其他键盘配置页面后重试。设备提示锁定时，请按原厂说明解锁。Linux
+            授权列表为空时，尝试首页的「其他连接方式」。确认线缆支持数据传输，并关闭其他配置页面。设备提示锁定时，请按原厂说明解锁。Linux
             可能需要设置 USB 或串口访问权限。
           </p>
           <h3>目前支持的型号</h3>
@@ -570,12 +559,19 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
       <div className="hub-connect">
         <Button primary onClick={onConnect} disabled={busy} data-testid="connect-device">
           <Plus size={17} />
-          {devices.length ? '添加设备' : '连接键盘'}
+          {busy ? '正在连接' : devices.length ? '添加设备' : '连接设备'}
         </Button>
         {!devices.length && <h2>请连接设备</h2>}
         <p>使用 USB 数据线连接</p>
       </div>
       <div className="hub-bottom">
+        <button
+          onClick={() => void s.authorize('serial')}
+          disabled={busy}
+          data-testid="connect-serial"
+        >
+          其他连接方式
+        </button>
         <button onClick={onDemo} disabled={busy}>
           体验演示 <ArrowRight size={13} />
         </button>
@@ -592,13 +588,13 @@ function DeviceHub({ onConnect, onDemo }: { onConnect(): void; onDemo(): void })
 function KeymapPage() {
   const s = useWorkspace();
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('全部');
+  const [category, setCategory] = useState('常用');
   const actions = useMemo(() => actionsFor(s.draft), [s.draft]);
   const layer = s.draft.layers.find((l) => l.id === s.layerId)!;
   const selected = s.selectedIndex === null ? null : layer.bindings[s.selectedIndex];
   const filtered = actions.filter(
     (a) =>
-      (category === '全部' || a.category === category) &&
+      (query.trim() || category === '全部' || a.category === category) &&
       `${a.label} ${a.description}`.toLowerCase().includes(query.toLowerCase()),
   );
   const categories = [
@@ -687,68 +683,87 @@ function KeymapPage() {
         </div>
       </section>
       <aside className="panel inspector">
-        <div className="panel-heading">
-          <div>
-            <h2>按键功能</h2>
-            <p>{selected ? `当前选择 · ${labelFor(selected, s.draft)}` : '选择一个按键开始编辑'}</p>
+        {!selected ? (
+          <div className="inspector-empty">
+            <MousePointer2 size={28} />
+            <p>选择一个按键</p>
           </div>
-          <span className="inspector-key">
-            {selected ? labelFor(selected, s.draft) : <MousePointer2 size={21} />}
-          </span>
-        </div>
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索按键或功能…"
-            aria-label="搜索按键功能"
-          />
-          {query && (
-            <button onClick={() => setQuery('')} aria-label="清空搜索">
-              <X size={14} />
-            </button>
-          )}
-        </label>
-        <div className="category-list" aria-label="功能分类">
-          {categories.map((c) => (
-            <button
-              key={c}
-              aria-pressed={category === c}
-              className={category === c ? 'active' : ''}
-              onClick={() => setCategory(c)}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-        <div className="action-grid">
-          {filtered.map((a) => (
-            <button
-              key={a.id}
-              disabled={!selected || s.operation !== 'idle'}
-              onClick={() => assign(a)}
-              title={a.description}
-              aria-label={`设为 ${a.description}`}
-            >
-              <span>{a.label}</span>
-            </button>
-          ))}
-          {!filtered.length && (
-            <div className="empty-search">
-              <Search size={23} />
-              <p>没有匹配的功能</p>
-              <button
-                onClick={() => {
-                  setQuery('');
-                  setCategory('全部');
-                }}
-              >
-                清空筛选
-              </button>
+        ) : (
+          <>
+            <div className="panel-heading">
+              <div>
+                <h2>按键功能</h2>
+                <p>
+                  {selected ? `当前选择 · ${labelFor(selected, s.draft)}` : '选择一个按键开始编辑'}
+                </p>
+              </div>
+              <span className="inspector-key">
+                {selected ? labelFor(selected, s.draft) : <MousePointer2 size={21} />}
+              </span>
             </div>
-          )}
-        </div>
+            <KeyCapture
+              key={`${s.layerId}-${s.selectedIndex}`}
+              actions={actions}
+              onAssign={assign}
+              disabled={s.operation !== 'idle'}
+            />
+            <label className="search-field">
+              <Search size={16} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索按键或功能…"
+                aria-label="搜索按键功能"
+              />
+              {query && (
+                <button onClick={() => setQuery('')} aria-label="清空搜索">
+                  <X size={14} />
+                </button>
+              )}
+            </label>
+            <div className="category-list" aria-label="功能分类">
+              {categories
+                .filter((c) => c === '全部' || actions.some((a) => a.category === c))
+                .map((c) => (
+                  <button
+                    key={c}
+                    aria-pressed={category === c}
+                    className={category === c ? 'active' : ''}
+                    onClick={() => setCategory(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+            </div>
+            <div className="action-grid">
+              {filtered.map((a) => (
+                <button
+                  key={a.id}
+                  disabled={!selected || s.operation !== 'idle'}
+                  onClick={() => assign(a)}
+                  title={a.description}
+                  aria-label={`设为 ${a.description}`}
+                >
+                  <span>{a.label}</span>
+                </button>
+              ))}
+              {!filtered.length && (
+                <div className="empty-search">
+                  <Search size={23} />
+                  <p>没有匹配的功能</p>
+                  <button
+                    onClick={() => {
+                      setQuery('');
+                      setCategory('全部');
+                    }}
+                  >
+                    清空筛选
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </aside>
     </div>
   );

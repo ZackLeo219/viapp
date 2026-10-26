@@ -10,14 +10,17 @@ const binary =
     : process.platform === 'darwin'
       ? 'viapp-macos-arm64'
       : 'viapp-linux-x64';
-const url = 'http://127.0.0.1:5178/';
+const port = Number(process.argv[2] || 5178);
+assert.ok(Number.isInteger(port) && port > 0 && port < 65536);
+const url = `http://127.0.0.1:${port}/`;
 try {
   await fetch(url);
-  throw new Error('Port 5178 is already in use; close the existing launcher before testing.');
+  throw new Error(`Port ${port} is already in use; close the existing launcher before testing.`);
 } catch (e) {
   if (!(e instanceof TypeError)) throw e;
 }
-const child = spawn(resolve(root, 'release', binary), ['-open=false'], {
+const launchArgs = ['-open=false', `-port=${port}`];
+const child = spawn(resolve(root, 'release', binary), launchArgs, {
   stdio: 'ignore',
   windowsHide: true,
 });
@@ -31,7 +34,7 @@ const exit = new Promise((resolve, reject) => {
 });
 try {
   let response;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 150 && !exited; i++) {
     try {
       response = await fetch(url);
       break;
@@ -39,14 +42,15 @@ try {
       await new Promise((r) => setTimeout(r, 100));
     }
   }
-  assert.equal(response?.headers.get('x-viapp-server'), '1');
+  assert.ok(response, `Launcher did not start on port ${port}.`);
+  assert.equal(response.headers.get('x-viapp-server'), '1');
   const html = await response.text();
   assert.ok(html.includes('VIAPP'));
   const entry = html.match(/src="([^"]+\.js)"/)[1];
   assert.equal((await fetch(new URL(entry, url))).status, 200);
   assert.equal((await fetch(new URL('licenses.txt', url))).status, 200);
   assert.equal((await fetch(url, { method: 'POST' })).status, 405);
-  const second = spawn(resolve(root, 'release', binary), ['-open=false'], {
+  const second = spawn(resolve(root, 'release', binary), launchArgs, {
     stdio: 'ignore',
     windowsHide: true,
   });

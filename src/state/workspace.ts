@@ -13,6 +13,7 @@ import { sameConfiguration, applyConfiguration } from '../domain/apply';
 import { saveProfile } from './database';
 import { ViaDriver } from '../protocols/via';
 import { ZmkDriver } from '../protocols/zmk';
+import { requestDeviceAccess, type DeviceAccess } from '../protocols/discovery';
 
 type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test';
 interface DeviceSession {
@@ -26,6 +27,7 @@ interface DeviceSession {
   future: DeviceSnapshot[];
 }
 interface Workspace {
+  autoConnectBlocked: ModelId[];
   workspaceOpen: boolean;
   sessions: Partial<Record<ModelId, DeviceSession>>;
   model: ModelId;
@@ -44,7 +46,12 @@ interface Workspace {
   progress: string;
   setPage(page: Page): void;
   openDevice(model: ModelId): void;
-  connect(model?: ModelId, demo?: boolean): Promise<boolean>;
+  connect(
+    model?: ModelId,
+    demo?: boolean,
+    options?: { access?: DeviceAccess; automatic?: boolean },
+  ): Promise<boolean>;
+  authorize(transport: 'hid' | 'serial'): Promise<boolean>;
   disconnect(): Promise<void>;
   refresh(): Promise<void>;
   apply(): Promise<void>;
@@ -83,6 +90,7 @@ function rememberCurrent() {
   });
 }
 export const useWorkspace = create<Workspace>((set, get) => ({
+  autoConnectBlocked: [],
   workspaceOpen: false,
   sessions: {},
   model: 'neo75cu',
@@ -101,7 +109,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   progress: '',
   setPage: (page) => {
     if (get().operation !== 'idle') return;
-    if (!get().workspaceOpen && ['keymap', 'macros', 'profiles'].includes(page)) return;
+    if (!get().workspaceOpen && page !== 'devices') return;
     if (page === 'devices') {
       rememberCurrent();
       set({ workspaceOpen: false });
@@ -124,27 +132,52 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     if (!session) return;
     set({ ...session, workspaceOpen: true, page: 'keymap', error: null, notice: null });
   },
-  async connect(model = get().model, demo = false) {
+  async authorize(transport) {
     if (get().operation !== 'idle') return false;
+    set({ operation: 'connecting', error: null, notice: null, progress: '等待授权' });
+    let access: DeviceAccess;
+    try {
+      access = await requestDeviceAccess(transport);
+    } catch (e) {
+      if (!(e instanceof DOMException && ['NotFoundError', 'AbortError'].includes(e.name)))
+        get().report(e);
+      return false;
+    } finally {
+      set({ operation: 'idle', progress: '' });
+    }
+    return get().connect(access.model, false, { access });
+  },
+  async connect(model = get().model, demo = false, options = {}) {
+    if (get().operation !== 'idle') return false;
+    if (options.access && options.access.model !== model) throw new Error('设备类型不匹配。');
     rememberCurrent();
     const previous = get().sessions[model];
     if (previous?.connection === (demo ? 'demo' : 'device')) {
-      get().openDevice(model);
+      if (!options.automatic) get().openDevice(model);
       return true;
     }
     if (demo && previous?.connection === 'device') {
       get().report('这台键盘已真实连接。请先断开它，再打开同型号的演示。');
       return false;
     }
-    set({ operation: 'connecting', error: null, notice: null, progress: '等待选择设备' });
+    set({
+      operation: 'connecting',
+      error: null,
+      notice: null,
+      progress: options.access ? '读取设备' : '等待选择设备',
+    });
     let candidate: Driver | undefined;
     try {
       // requestDevice/requestPort must run directly from the user's click, before any unrelated await.
       const opening = demo
         ? Promise.resolve(new DemoDriver(model))
         : model === 'neo75cu'
-          ? ViaDriver.connect()
-          : ZmkDriver.connect();
+          ? ViaDriver.connect(
+              options.access?.transport === 'hid' ? options.access.device : undefined,
+            )
+          : ZmkDriver.connect(
+              options.access?.transport === 'serial' ? options.access.port : undefined,
+            );
       candidate = await opening;
       set({ progress: '读取原厂配置' });
       const snapshot = await candidate.read();
@@ -208,10 +241,12 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         });
       };
       set((s) => ({
-        ...session,
+        ...(!options.automatic || s.model === model ? session : {}),
         sessions: { ...s.sessions, [model]: session },
-        workspaceOpen: demo,
-        page: demo ? 'keymap' : 'devices',
+        autoConnectBlocked: s.autoConnectBlocked.filter((m) => m !== model),
+        ...(!options.automatic
+          ? { workspaceOpen: demo, page: demo ? ('keymap' as const) : ('devices' as const) }
+          : {}),
       }));
       log(
         `${snapshot.name} ${demo ? '演示模式' : 'USB 已连接'} · ${snapshot.layers.length} 层 · ${snapshot.keys.length} 键`,
@@ -235,7 +270,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     try {
       await drivers.get(model)?.close();
       drivers.delete(model);
-      set({ connection: 'offline' });
+      set((s) => ({
+        connection: 'offline',
+        autoConnectBlocked: [...new Set([...s.autoConnectBlocked, model])],
+      }));
       rememberCurrent();
       log('连接已关闭，当前草稿保留。');
     } catch (e) {

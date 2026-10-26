@@ -112,10 +112,10 @@ export class ViaDriver implements Driver {
     if (typeof navigator !== 'undefined' && navigator.hid)
       navigator.hid.addEventListener('disconnect', this.handleDisconnect);
   }
-  static async connect(): Promise<ViaDriver> {
+  static async connect(authorized?: HIDDevice): Promise<ViaDriver> {
     if (!window.isSecureContext || !navigator.hid)
       throw new Error('请使用桌面 Chrome / Edge，通过 HTTPS 或 localhost 打开网页。');
-    const [device] = await navigator.hid.requestDevice({ filters: [NEO_USB] });
+    const device = authorized ?? (await navigator.hid.requestDevice({ filters: [NEO_USB] }))[0];
     if (!device) throw new DOMException('已取消选择设备。', 'NotFoundError');
     if (device.vendorId !== NEO_USB.vendorId || device.productId !== NEO_USB.productId)
       throw new Error('当前只支持 Neo75 Cu 原装三模 PCB。');
@@ -147,7 +147,7 @@ export class ViaDriver implements Driver {
     const proto = await this.transport.exchange([1]);
     const version = proto[1] * 256 + proto[2];
     if (![9, 10, 11, 12].includes(version))
-      throw new Error(`设备使用 VIA 协议 ${version}，尚未验证此版本，已禁止写入。请导出诊断信息。`);
+      throw new Error(`暂不支持 VIA 协议 ${version}，未进行写入。`);
     const count = (await this.transport.exchange([0x11]))[1];
     if (count < 1 || count > 16) throw new Error('设备报告的层数量无效。');
     const layout = await this.transport.exchange([2, 2], 2);

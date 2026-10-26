@@ -19,9 +19,14 @@ var assets embed.FS
 
 func main() {
 	autoOpen := flag.Bool("open", true, "Open the local workspace in the default browser")
+	port := flag.Int("port", 5178, "Local HTTP port")
 	flag.Parse()
-	const address = "127.0.0.1:5178"
-	const url = "http://localhost:5178/"
+	if *port < 1 || *port > 65535 {
+		fmt.Println("VIAPP: invalid port")
+		os.Exit(1)
+	}
+	address := fmt.Sprintf("127.0.0.1:%d", *port)
+	url := fmt.Sprintf("http://localhost:%d/", *port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		client := http.Client{Timeout: time.Second}
@@ -35,7 +40,7 @@ func main() {
 				return
 			}
 		}
-		fmt.Println("VIAPP: 5178 端口被其他程序占用，请关闭占用程序后重试。")
+		fmt.Printf("VIAPP: %d 端口不可用，请关闭占用程序或使用 -port 指定其他端口。\n", *port)
 		fmt.Println("按回车退出。")
 		fmt.Scanln()
 		os.Exit(1)

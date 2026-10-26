@@ -71,10 +71,10 @@ export class ZmkDriver implements Driver {
       }
     };
   }
-  static async connect(): Promise<ZmkDriver> {
+  static async connect(authorized?: SerialPort): Promise<ZmkDriver> {
     if (!window.isSecureContext || !navigator.serial)
       throw new Error('请使用桌面 Chrome / Edge，通过 HTTPS 或 localhost 打开网页。');
-    const port = await navigator.serial.requestPort({ filters: [TOFU_USB] });
+    const port = authorized ?? (await navigator.serial.requestPort({ filters: [TOFU_USB] }));
     const identity = port.getInfo();
     if (
       identity.usbVendorId !== TOFU_USB.usbVendorId ||

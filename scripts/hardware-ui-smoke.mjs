@@ -12,7 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = join(root, '.hardware-test-results');
 await mkdir(output, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), 'viapp-ui-test-'));
-const base = 'http://localhost:4173';
+const base = process.argv[2] || 'http://localhost:4173';
 const browser = spawn(
   join(process.env.ProgramFiles || 'C:\\Program Files', 'Google/Chrome/Application/chrome.exe'),
   [
@@ -111,14 +111,11 @@ try {
   )
     throw new Error('Fresh home has unexpected connected devices or editor controls.');
   let count = 0;
-  for (const [model, name] of [
-    ['neo75cu', 'Neo75 Cu'],
-    ['tofu-pad', 'TOFU PAD'],
-  ]) {
-    await click('[data-testid="connect-device"]');
-    await waitFor('!!document.querySelector("[role=dialog]")');
+  for (const model of ['neo75cu', 'tofu-pad']) {
     await call('Page.bringToFront');
-    await click(`[aria-label="连接 ${name}"]`);
+    await click(
+      model === 'neo75cu' ? '[data-testid="connect-device"]' : '[data-testid="connect-serial"]',
+    );
     const choice = await promisify(execFile)(
       'powershell.exe',
       [
@@ -143,9 +140,16 @@ try {
     if ((await evaluate('document.querySelector("h1")?.textContent')) !== '设备中心')
       throw new Error('Connection should return to the device center.');
   }
+  await call('Page.reload', { ignoreCache: true });
+  await waitFor('document.querySelectorAll(".connected-card").length === 2');
+  if (await evaluate('!!document.querySelector("[role=dialog]")'))
+    throw new Error('Automatic discovery unexpectedly requested a model.');
   await click('[aria-label="Neo75 Cu 开始配置"]');
   await waitFor('document.querySelector("h1")?.textContent === "Neo75 Cu"');
   await click('[role="group"] [data-key-index="0"]');
+  await evaluate(
+    '[...document.querySelectorAll(".category-list button")].find(b=>b.textContent.trim()==="字母数字").click()',
+  );
   await click('[aria-label="设为 A"]');
   await waitFor('document.querySelector(".save-state")?.textContent.includes("1 个按键")');
   await click('[aria-label="返回设备中心"]');
@@ -171,6 +175,8 @@ try {
       {
         testedAt: new Date().toISOString(),
         realDevices: 2,
+        automaticReconnect: true,
+        origin: base,
         connectionFirst: true,
         separateDrafts: true,
         returnedToCleanState: true,
@@ -182,7 +188,7 @@ try {
     ),
   );
   console.log(
-    'Real browser UI verified: 2 connected devices, explicit device entry, isolated drafts, clean final state.',
+    'Real browser UI verified: 2 connected devices, automatic reconnect after reload, isolated drafts, clean final state.',
   );
 } catch (error) {
   console.error(error);

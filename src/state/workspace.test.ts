@@ -1,8 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DemoDriver } from '../domain/demo';
 import { isDirty, useWorkspace } from './workspace';
+import { watchDevices } from './discovery';
 
-const mocks = vi.hoisted(() => ({ neo: vi.fn(), tofu: vi.fn(), backup: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  neo: vi.fn(),
+  tofu: vi.fn(),
+  backup: vi.fn(),
+  request: vi.fn(),
+  authorized: vi.fn(),
+}));
+vi.mock('../protocols/discovery', () => ({
+  requestDeviceAccess: mocks.request,
+  authorizedDevices: mocks.authorized,
+  identifyHid: () => null,
+  identifySerial: () => null,
+}));
 vi.mock('../protocols/via', () => ({ ViaDriver: { connect: mocks.neo } }));
 vi.mock('../protocols/zmk', () => ({ ZmkDriver: { connect: mocks.tofu } }));
 vi.mock('./database', () => ({ saveProfile: mocks.backup }));
@@ -19,12 +32,14 @@ beforeEach(() => {
   useWorkspace.setState(useWorkspace.getInitialState(), true);
   vi.clearAllMocks();
   mocks.backup.mockResolvedValue(undefined);
+  mocks.authorized.mockResolvedValue([]);
 });
 afterEach(async () => {
   for (const model of ['neo75cu', 'tofu-pad'] as const) {
     state().openDevice(model);
     await state().disconnect();
   }
+  vi.unstubAllGlobals();
 });
 
 describe('device center and independent sessions', () => {
@@ -38,6 +53,7 @@ describe('device center and independent sessions', () => {
     expect(state().sessions.neo75cu?.connection).toBe('device');
     state().setPage('profiles');
     expect(state().workspaceOpen).toBe(false);
+    expect(state().page).toBe('devices');
     state().openDevice('neo75cu');
     expect(state().page).toBe('keymap');
     expect(state().workspaceOpen).toBe(true);
@@ -132,5 +148,69 @@ describe('device center and independent sessions', () => {
     expect(state().draft.identity).toBe('TEST:neo75cu');
     expect(isDirty(state())).toBe(false);
     expect(mocks.backup).toHaveBeenCalled();
+  });
+});
+
+describe('automatic connection', () => {
+  it('adds a discovered board without navigating away or altering another draft', async () => {
+    await state().connect('neo75cu', true);
+    state().edit(0, { type: 'via', code: 4 });
+    const before = state().draft;
+    mocks.tofu.mockResolvedValue(new HardwareFixture('tofu-pad'));
+    const port = {} as SerialPort;
+    await state().connect('tofu-pad', false, {
+      access: { model: 'tofu-pad', transport: 'serial', port },
+      automatic: true,
+    });
+    expect(mocks.tofu).toHaveBeenCalledWith(port);
+    expect(state().model).toBe('neo75cu');
+    expect(state().page).toBe('keymap');
+    expect(state().draft).toEqual(before);
+    expect(state().sessions['tofu-pad']?.connection).toBe('device');
+  });
+  it('scans existing grants, avoids duplicate opens and respects manual disconnection', async () => {
+    const bus = new EventTarget();
+    vi.stubGlobal('navigator', { hid: bus, serial: new EventTarget() });
+    const device = {} as HIDDevice;
+    mocks.authorized.mockResolvedValue([{ model: 'neo75cu', transport: 'hid', device }]);
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    const stop = watchDevices();
+    try {
+      await vi.waitFor(() => expect(state().sessions.neo75cu?.connection).toBe('device'));
+      bus.dispatchEvent(new Event('connect'));
+      await vi.waitFor(() => expect(mocks.authorized).toHaveBeenCalledTimes(2));
+      expect(mocks.neo).toHaveBeenCalledTimes(1);
+      await state().disconnect();
+      bus.dispatchEvent(new Event('connect'));
+      await vi.waitFor(() => expect(mocks.authorized).toHaveBeenCalledTimes(3));
+      expect(mocks.neo).toHaveBeenCalledTimes(1);
+      expect(state().autoConnectBlocked).toContain('neo75cu');
+    } finally {
+      stop();
+    }
+  });
+  it('waits until a write finishes before opening newly discovered hardware', async () => {
+    vi.stubGlobal('navigator', { hid: new EventTarget(), serial: new EventTarget() });
+    useWorkspace.setState({ operation: 'saving' });
+    mocks.authorized.mockResolvedValue([{ model: 'neo75cu', transport: 'hid', device: {} }]);
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    const stop = watchDevices();
+    try {
+      await Promise.resolve();
+      expect(mocks.neo).not.toHaveBeenCalled();
+      useWorkspace.setState({ operation: 'idle' });
+      await vi.waitFor(() => expect(state().sessions.neo75cu?.connection).toBe('device'));
+    } finally {
+      stop();
+    }
+  });
+  it('identifies the selected device from its grant, including serial devices', async () => {
+    const port = {} as SerialPort;
+    mocks.request.mockResolvedValue({ model: 'tofu-pad', transport: 'serial', port });
+    mocks.tofu.mockResolvedValue(new HardwareFixture('tofu-pad'));
+    expect(await state().authorize('serial')).toBe(true);
+    expect(state().model).toBe('tofu-pad');
+    expect(state().page).toBe('devices');
+    expect(mocks.tofu).toHaveBeenCalledWith(port);
   });
 });
