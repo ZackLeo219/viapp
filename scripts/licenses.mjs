@@ -66,5 +66,5 @@ const output = [
   'Third-party notices\nGenerated from the installed, locked dependency graph.\nSome additional Workbox notices are included conservatively.',
   ...[...packages.values()].sort(),
 ].join('\n\n' + '='.repeat(72) + '\n\n');
-await writeFile(join(root, 'public/licenses.txt'), output + '\n');
+await writeFile(join(root, 'public/licenses.txt'), output.replaceAll('\r\n', '\n').trimEnd() + '\n');
 console.log(`Collected license notices for ${packages.size} packages.`);
