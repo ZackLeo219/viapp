@@ -4,7 +4,7 @@
 
 [打开网页驱动](https://zackleo219.github.io/viapp/) · [Windows 离线版](https://github.com/ZackLeo219/viapp/releases/latest/download/viapp-windows-x64.exe) · [其他下载](https://github.com/ZackLeo219/viapp/releases)
 
-![VIAPP 设备中心](artifacts/connected-devices.png)
+![VIAPP 设备中心](artifacts/device-center-usb.png)
 
 ## 支持的键盘
 
@@ -13,7 +13,7 @@
 | Neo75 Cu | 原装三模 PCB | 改键、快捷键、宏、物理配列、按键测试       |
 | TOFU PAD | 原装双模 PCB | 改键、快捷键、双功能键、图层管理、按键测试 |
 
-使用电脑上的 **Chrome 或 Edge**，通过 USB 数据线连接。当前不支持 2.4 GHz 和蓝牙配置。TOFU PAD 暂不支持在线编辑宏。
+使用电脑上的 **Chrome 或 Edge** 打开网页，请通过USB数据线连接。TOFU PAD 暂不支持在线编辑宏。
 
 ## 使用
 
