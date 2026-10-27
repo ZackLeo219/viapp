@@ -46,6 +46,8 @@ pnpm test:package     # 检查当前系统的离线包
 
 测试还应覆盖：首次授权、刷新后自动连接、断线与重连、跨设备草稿隔离、保存失败时保留备份。没有真机验证的适配可以先提交草稿 PR，并明确未验证项目；正式支持列表只列已验证的型号和模式。
 
+没有 USB 序列号的 HID 设备（如 Neo65 Cu 原装三模 PCB）会在拔出后失去浏览器授权。测试需覆盖重新授权、断开卡片与草稿保留，不能只模拟授权始终有效的拔插。
+
 在项目目录运行 `node scripts/hardware-server.mjs`，然后用 Windows Node.js 执行。默认检查 Neo75 Cu 和 TOFU PAD；单独测试 Neo65 Cu 时添加 `--model=neo65cu`：
 
 ```sh

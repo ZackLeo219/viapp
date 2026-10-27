@@ -63,4 +63,19 @@ describe('permission-based device discovery', () => {
     expect((await requestDeviceAccess('serial')).model).toBe('tofu-pad');
     expect(requestHid).toHaveBeenCalledTimes(1);
   });
+  it('limits reauthorization to the disconnected keyboard identity', async () => {
+    const requestDevice = vi.fn().mockResolvedValue([{ ...hid, productId: 0x3060 }]);
+    vi.stubGlobal('window', { isSecureContext: true });
+    vi.stubGlobal('navigator', { hid: { requestDevice } });
+    expect((await requestDeviceAccess('hid', 'neo65cu')).model).toBe('neo65cu');
+    expect(requestDevice).toHaveBeenLastCalledWith({
+      filters: [{ vendorId: 0x36b0, productId: 0x3060 }],
+      exclusionFilters: [{ vendorId: 0x36b0, productId: 0x3002 }],
+    });
+    requestDevice.mockResolvedValue([{ ...hid, vendorId: 0x1234, productId: 0x5678 }]);
+    expect((await requestDeviceAccess('hid', 'via-1234-5678')).model).toBe('via-1234-5678');
+    expect(requestDevice.mock.lastCall?.[0].filters).toEqual([
+      { vendorId: 0x1234, productId: 0x5678 },
+    ]);
+  });
 });

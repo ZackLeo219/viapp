@@ -7,6 +7,7 @@ interface Device {
   rows: number;
   cols: number;
   layers?: number;
+  ephemeral?: boolean;
 }
 async function fixture(page: Page, devices: Device[], granted = true) {
   await page.addInitScript(
@@ -73,7 +74,11 @@ async function fixture(page: Page, devices: Device[], granted = true) {
       const boards = devices.map((d) => new Board(d));
       Object.assign(hid, {
         getDevices: async () => (authorized ? boards.filter((b) => b.plugged) : []),
-        requestDevice: async () => {
+        requestDevice: async (options: HIDDeviceRequestOptions) => {
+          document.documentElement.dataset.permissionFilters = JSON.stringify(options.filters);
+          document.documentElement.dataset.permissionRequests = String(
+            Number(document.documentElement.dataset.permissionRequests || 0) + 1,
+          );
           authorized = true;
           sessionStorage.setItem('via-test-granted', '1');
           return boards.filter((b) => b.plugged).slice(0, 1);
@@ -84,12 +89,16 @@ async function fixture(page: Page, devices: Device[], granted = true) {
           unplug(pid: number) {
             const b = boards.find((b) => b.productId === pid)!;
             b.plugged = false;
+            if (b.config.ephemeral) {
+              authorized = false;
+              sessionStorage.removeItem('via-test-granted');
+            }
             hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: b }));
           },
           plug(pid: number) {
             const b = boards.find((b) => b.productId === pid)!;
             b.plugged = true;
-            hid.dispatchEvent(Object.assign(new Event('connect'), { device: b }));
+            if (authorized) hid.dispatchEvent(Object.assign(new Event('connect'), { device: b }));
           },
         },
       });
@@ -221,3 +230,65 @@ for (const width of [1536, 390])
       page.getByRole('button', { name: 'Neo65 Cu 开始配置', exact: true }),
     ).toBeVisible();
   });
+
+for (const width of [1536, 390])
+  test(`a keyboard losing its grant keeps a reconnect card at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 960 });
+    await fixture(page, [{ ...neo65, ephemeral: true }]);
+    await page.goto('/');
+    await expect(
+      page.getByRole('button', { name: 'Neo65 Cu 开始配置', exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const api = (
+        window as unknown as { __viaTest: { unplug(pid: number): void; plug(pid: number): void } }
+      ).__viaTest;
+      api.unplug(0x3060);
+      api.plug(0x3060);
+    });
+    await expect(page.locator('.connected-card.is-offline')).toHaveCount(1);
+    await expect(
+      page.getByRole('button', { name: '重新连接 Neo65 Cu', exact: true }),
+    ).toBeVisible();
+    expect(await page.evaluate(() => navigator.hid.getDevices())).toHaveLength(0);
+    expect(
+      await page.evaluate(() => document.documentElement.dataset.permissionRequests),
+    ).toBeUndefined();
+    await page.getByRole('button', { name: '重新连接 Neo65 Cu', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Neo65 Cu 开始配置', exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('.connected-card.is-offline')).toHaveCount(0);
+    expect(
+      await page.evaluate(() => JSON.parse(document.documentElement.dataset.permissionFilters!)),
+    ).toEqual([{ vendorId: 0x36b0, productId: 0x3060 }]);
+    expect(await page.evaluate(() => document.documentElement.dataset.permissionRequests)).toBe(
+      '1',
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+
+test('reauthorizing from the workspace retains its unsaved draft and does not write it', async ({
+  page,
+}) => {
+  await fixture(page, [{ ...neo65, ephemeral: true }]);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Neo65 Cu 开始配置', exact: true }).click();
+  await page.getByRole('checkbox', { name: '自动保存', exact: true }).uncheck();
+  await page.locator('[data-key-index="17"]').click();
+  await page.getByRole('group', { name: '录入目标按键' }).press('b');
+  await page.evaluate(() => {
+    const api = (
+      window as unknown as { __viaTest: { unplug(pid: number): void; plug(pid: number): void } }
+    ).__viaTest;
+    api.unplug(0x3060);
+    api.plug(0x3060);
+  });
+  await expect(page.locator('.info-banner')).toContainText('草稿已保留');
+  await page.getByRole('button', { name: '重新连接', exact: true }).click();
+  await expect(page.locator('.connection-badge')).toHaveText('USB 已连接');
+  await expect(page.locator('[data-key-index="17"]')).toHaveAttribute('aria-label', /B，位置 1,1/);
+  expect(await page.evaluate(() => document.documentElement.dataset.lastWrite)).toBeUndefined();
+});

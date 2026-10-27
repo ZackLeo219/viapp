@@ -677,9 +677,10 @@ test('a native selection creates a device card and later grants and plug events 
   await expect(page.locator('.connected-card')).toHaveCount(1);
   await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
   await page.evaluate(() => window.__keyboardFixture.unplug());
-  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await expect(page.locator('.connected-card.is-offline')).toHaveCount(1);
   await page.evaluate(() => window.__keyboardFixture.plug());
   await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.locator('.connected-card.is-offline')).toHaveCount(0);
   await page.getByRole('button', { name: '断开 Neo75 Cu', exact: true }).click();
   await expect(page.locator('.connected-card')).toHaveCount(0);
   await page.evaluate(() => navigator.hid.dispatchEvent(new Event('connect')));

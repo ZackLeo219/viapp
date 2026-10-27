@@ -30,14 +30,26 @@ export async function authorizedDevices(): Promise<DeviceAccess[]> {
     ...ports.filter((p) => !('connected' in p) || p.connected !== false).map(identifySerial),
   ].filter((d): d is DeviceAccess => d !== null);
 }
-export async function requestDeviceAccess(transport: 'hid' | 'serial'): Promise<DeviceAccess> {
+export async function requestDeviceAccess(
+  transport: 'hid' | 'serial',
+  model?: ModelId,
+): Promise<DeviceAccess> {
   if (!window.isSecureContext || !(transport in navigator))
     throw new Error('请使用桌面 Chrome / Edge，通过 HTTPS 或 localhost 打开网页。');
+  const identity =
+    model === 'neo75cu'
+      ? ['36b0', '3021']
+      : model === 'neo65cu'
+        ? ['36b0', '3060']
+        : /^via-([0-9a-f]{4})-([0-9a-f]{4})$/.exec(model ?? '')?.slice(1);
+  const filters = identity
+    ? [{ vendorId: parseInt(identity[0], 16), productId: parseInt(identity[1], 16) }]
+    : viaFilters;
   const access =
     transport === 'hid'
       ? (
           await navigator.hid.requestDevice({
-            filters: viaFilters,
+            filters,
             exclusionFilters: [{ vendorId: 0x36b0, productId: 0x3002 }],
           })
         )

@@ -58,6 +58,7 @@ interface Workspace {
   requiresReview: boolean;
   autoSaveBlocked: boolean;
   autoConnectBlocked: ModelId[];
+  reconnectModels: ModelId[];
   workspaceOpen: boolean;
   sessions: Partial<Record<ModelId, DeviceSession>>;
   model: ModelId;
@@ -82,7 +83,7 @@ interface Workspace {
     demo?: boolean,
     options?: { access?: DeviceAccess; automatic?: boolean },
   ): Promise<boolean>;
-  authorize(transport: 'hid' | 'serial'): Promise<boolean>;
+  authorize(transport: 'hid' | 'serial', model?: ModelId): Promise<boolean>;
   disconnect(model?: ModelId): Promise<void>;
   refresh(): Promise<void>;
   apply(options?: { automatic?: boolean }): Promise<void>;
@@ -241,6 +242,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   requiresReview: false,
   autoSaveBlocked: false,
   autoConnectBlocked: [],
+  reconnectModels: [],
   workspaceOpen: false,
   sessions: {},
   model: 'neo75cu',
@@ -283,12 +285,15 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     if (!session) return;
     set({ ...session, workspaceOpen: true, page: 'keymap', error: null, notice: null });
   },
-  async authorize(transport) {
+  async authorize(transport, model) {
     if (isWorkspaceBusy(get())) return false;
+    const returnToWorkspace = !!model && get().model === model && get().workspaceOpen;
+    const previousPage = get().page;
     set({ operation: 'connecting', error: null, notice: null, progress: '等待授权' });
     let access: DeviceAccess;
     try {
-      access = await requestDeviceAccess(transport);
+      access = await requestDeviceAccess(transport, model);
+      if (model && access.model !== model) throw new Error('请选择原来的键盘，当前草稿已保留。');
     } catch (e) {
       if (!(e instanceof DOMException && ['NotFoundError', 'AbortError'].includes(e.name)))
         get().report(e);
@@ -296,7 +301,12 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     } finally {
       set({ operation: 'idle', progress: '' });
     }
-    return get().connect(access.model, false, { access });
+    const connected = await get().connect(access.model, false, { access });
+    if (connected && returnToWorkspace) {
+      get().openDevice(access.model);
+      get().setPage(previousPage);
+    }
+    return connected;
   },
   async connect(model = get().model, demo = false, options = {}) {
     if (isWorkspaceBusy(get())) return false;
@@ -399,6 +409,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         set((s) => ({
           ...(s.model === model ? { connection: 'offline' as const } : {}),
           sessions: { ...s.sessions, [model]: { ...s.sessions[model]!, connection: 'offline' } },
+          reconnectModels: [...new Set([...s.reconnectModels, model])],
           error: `${snapshot.name}：${reason}`,
         }));
         log(`${snapshot.name}：${reason}`, 'error');
@@ -429,6 +440,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         ),
         sessions: { ...s.sessions, [model]: session },
         autoConnectBlocked: s.autoConnectBlocked.filter((m) => m !== model),
+        reconnectModels: s.reconnectModels.filter((m) => m !== model),
         ...(!options.automatic
           ? { workspaceOpen: demo, page: demo ? ('keymap' as const) : ('devices' as const) }
           : {}),
@@ -475,6 +487,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
           ? { ...s.sessions, [model]: { ...s.sessions[model], connection: 'offline' } }
           : s.sessions,
         autoConnectBlocked: [...new Set([...s.autoConnectBlocked, model])],
+        reconnectModels: s.reconnectModels.filter((m) => m !== model),
       }));
       log('连接已关闭，当前草稿保留。');
     } catch (e) {

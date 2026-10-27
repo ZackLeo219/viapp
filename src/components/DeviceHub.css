@@ -145,6 +145,24 @@
 .connected-card-open:focus-visible {
   outline-offset: -3px;
 }
+.connected-card.is-offline .connected-visual {
+  background: #f1f2ed;
+}
+.connected-card.is-offline .keyboard-svg {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+}
+.connected-card.is-offline .connected-card-bottom {
+  background: #e9ece3;
+}
+.card-reconnect {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #435438;
+}
 .connected-card-disconnect {
   position: absolute;
   top: 14px;

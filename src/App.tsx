@@ -20,7 +20,6 @@ import {
   LoaderCircle,
   MonitorCheck,
   MousePointer2,
-  Plus,
   Redo2,
   RotateCcw,
   Search,
@@ -324,10 +323,13 @@ export default function App() {
               {!hub && s.connection === 'offline' && inWorkspace && (
                 <Button
                   primary
-                  onClick={() => void s.authorize(s.model === 'tofu-pad' ? 'serial' : 'hid')}
+                  onClick={() =>
+                    void s.authorize(s.model === 'tofu-pad' ? 'serial' : 'hid', s.model)
+                  }
                   disabled={busy}
                 >
-                  {busy ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}连接键盘
+                  {busy ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}
+                  重新连接
                 </Button>
               )}
             </div>
@@ -336,7 +338,13 @@ export default function App() {
             <div className="info-banner">
               <Info size={17} />
               <span>
-                <strong>离线草稿</strong> 重新连接后可保存。
+                {isDirty(s) || Object.keys(s.macroDrafts).length > 0 ? (
+                  <>
+                    <strong>草稿已保留</strong> 重新连接后可保存。
+                  </>
+                ) : (
+                  <>设备已断开，点击“重新连接”继续。</>
+                )}
               </span>
             </div>
           )}
@@ -539,7 +547,7 @@ export default function App() {
             <li>点击「添加设备」，选择 VIA 或 ZMK，再在浏览器窗口中选择设备。</li>
             <li>点击已连接的设备卡片，开始配置。</li>
           </ol>
-          <p>同一浏览器保留授权后，打开网页或再次插入设备会自动识别。</p>
+          <p>授权有效时会自动连接；部分键盘拔插后需再次授权，点击设备卡片重新连接即可。</p>
           <h3>无法连接</h3>
           <p>
             授权列表为空时，确认已切换到有线模式、线缆支持数据传输，并关闭其他配置页面。设备提示锁定时，请按原厂说明解锁。Linux
@@ -590,7 +598,7 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
   const busy = isWorkspaceBusy(s);
   const devices = Object.values(s.sessions).filter(
     (session): session is NonNullable<typeof session> =>
-      !!session && session.connection === 'device',
+      !!session && (session.connection === 'device' || s.reconnectModels.includes(session.model)),
   );
   const pending = Object.values(s.pendingDevices).filter((device) => !!device);
   const hasDevices = devices.length + pending.length > 0;
@@ -600,12 +608,26 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
         {hasDevices ? (
           <div className="connected-devices">
             {devices.map((session) => (
-              <article className="connected-card" key={session.model}>
+              <article
+                className={`connected-card ${session.connection === 'offline' ? 'is-offline' : ''}`}
+                key={session.model}
+              >
                 <button
                   className="connected-card-open"
-                  onClick={() => transitionWorkspace(() => s.openDevice(session.model))}
+                  onClick={() =>
+                    session.connection === 'offline'
+                      ? void s.authorize(
+                          session.model === 'tofu-pad' ? 'serial' : 'hid',
+                          session.model,
+                        )
+                      : transitionWorkspace(() => s.openDevice(session.model))
+                  }
                   disabled={busy}
-                  aria-label={`${session.draft.name} 开始配置`}
+                  aria-label={
+                    session.connection === 'offline'
+                      ? `重新连接 ${session.draft.name}`
+                      : `${session.draft.name} 开始配置`
+                  }
                 >
                   <div className="connected-visual">
                     <Keyboard
@@ -619,24 +641,33 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
                     <div>
                       <h2>{session.draft.name}</h2>
                       <p>
-                        <span className="status-dot live" />
-                        USB 已连接
+                        <span
+                          className={`status-dot ${session.connection === 'device' ? 'live' : ''}`}
+                        />
+                        {session.connection === 'device' ? 'USB 已连接' : '已断开'}
                         {(isDirty(session) || Object.keys(session.macroDrafts).length > 0) && (
                           <span className="draft-tag">未保存</span>
                         )}
                       </p>
                     </div>
-                    <ArrowRight size={20} />
+                    {session.connection === 'offline' ? (
+                      <span className="card-reconnect">
+                        重新连接
+                        <ArrowRight size={16} />
+                      </span>
+                    ) : (
+                      <ArrowRight size={20} />
+                    )}
                   </div>
                 </button>
                 <button
                   className="connected-card-disconnect"
                   onClick={() => void s.disconnect(session.model)}
                   disabled={busy}
-                  aria-label={`断开 ${session.draft.name}`}
+                  aria-label={`${session.connection === 'offline' ? '移除' : '断开'} ${session.draft.name}`}
                 >
-                  <Unplug size={14} />
-                  断开
+                  {session.connection === 'offline' ? <X size={14} /> : <Unplug size={14} />}
+                  {session.connection === 'offline' ? '移除' : '断开'}
                 </button>
               </article>
             ))}

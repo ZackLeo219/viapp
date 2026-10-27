@@ -162,6 +162,17 @@ describe('device center and independent sessions', () => {
     neo.onDisconnect?.('Cable disconnected');
     expect(state().connection).toBe('device');
     expect(state().sessions.neo75cu?.connection).toBe('offline');
+    expect(state().reconnectModels).toContain('neo75cu');
+  });
+  it('cannot reconnect a saved draft to a different model selected by the browser', async () => {
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    await state().connect('neo75cu');
+    const before = state().draft;
+    mocks.request.mockResolvedValue({ model: 'tofu-pad', transport: 'serial', port: {} });
+    expect(await state().authorize('hid', 'neo75cu')).toBe(false);
+    expect(state().draft).toEqual(before);
+    expect(mocks.tofu).not.toHaveBeenCalled();
+    expect(state().error).toContain('请选择原来的键盘');
   });
   it('disconnects one card without switching devices, closing the other driver or losing either draft', async () => {
     const neo = new HardwareFixture('neo75cu'),

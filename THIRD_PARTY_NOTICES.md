@@ -52,3 +52,10 @@ The manufacturer documents the original dual-mode PCB as ZMK based. USB VID 0x9D
 - https://kbdfans.com/products/tofu-pad
 
 Names of keyboards and manufacturers identify compatible products; they do not imply sponsorship or endorsement.
+
+## WebHID connection permissions
+
+The distinction between persistent USB-serial-number permissions and temporary device permissions was checked against Chromium's `HidChooserContext`. Temporary permissions are revoked when the device disconnects; VIAPP requests a new grant from a user click when necessary.
+
+- https://developer.chrome.com/docs/capabilities/hid
+- https://chromium.googlesource.com/chromium/src/+/main/chrome/browser/hid/hid_chooser_context.cc
