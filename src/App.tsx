@@ -535,7 +535,7 @@ export default function App() {
         <div className="help-content">
           <h3>连接设备</h3>
           <ol>
-            <li>接入 USB 数据线或受支持的 2.4 GHz 接收器，并切换到对应模式。</li>
+            <li>接上 USB 数据线，并切换到有线模式。</li>
             <li>点击「添加设备」，选择 VIA 或 ZMK，再在浏览器窗口中选择设备。</li>
             <li>点击已连接的设备卡片，开始配置。</li>
           </ol>
@@ -556,7 +556,7 @@ export default function App() {
               <span>原装双模 PCB</span>
             </li>
           </ul>
-          <p>USB 有线连接已验证；2.4 GHz 接收器待验证。蓝牙不支持网页配置。</p>
+          <p>当前支持 USB 有线配置，暂不支持 2.4 GHz 和蓝牙配置。</p>
           <div className="help-links">
             <a href="https://github.com/ZackLeo219/viapp#使用" target="_blank" rel="noreferrer">
               使用文档 ↗
@@ -638,7 +638,7 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
       <div className="hub-connect">
         <DeviceConnect busy={busy} onConnect={s.authorize} />
         {!devices.length && <h2>请连接设备</h2>}
-        <p>通过 USB 数据线或受支持的 2.4 GHz 接收器连接</p>
+        <p>使用 USB 数据线连接</p>
       </div>
       <div className="hub-bottom">
         <button onClick={onDemo} disabled={busy}>

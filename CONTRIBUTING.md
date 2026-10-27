@@ -34,7 +34,7 @@ pnpm test:package     # 检查当前系统的离线包
 
 - 收集原装 PCB 版本、固件版本、USB VID/PID、可用配置接口、官方配列或 JSON。不要上传序列号、个人键位备份或私人宏内容。
 - 在 `src/domain/types.ts` 登记型号，在 `src/domain/` 定义配列、功能及演示数据。
-- 在 `src/protocols/discovery.ts` 登记设备识别。检查具体接口，避免识别为其他 HID 或串口设备。
+- 在 `src/protocols/discovery.ts` 登记设备识别。检查具体接口，避免识别为其他 HID 或串口设备。接收器的 VID/PID 可能跨型号共用，新增无线适配时需验证实际连接的键盘型号。
 - 复用经过验证的协议适配器，或在 `src/protocols/` 新增适配器。遵循 `Driver` 接口，处理超时、断开、锁定、提交和读回校验。
 - 在工作台中接入连接逻辑，并更新帮助中的支持列表、README 和测试。
 - 为协议边界、参数校验和配置恢复添加测试。UI 不展示固件无法实现的功能。
