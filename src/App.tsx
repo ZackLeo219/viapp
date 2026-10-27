@@ -638,7 +638,7 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
       <div className="hub-connect">
         <DeviceConnect busy={busy} onConnect={s.authorize} />
         {!devices.length && <h2>请连接设备</h2>}
-        <p>使用 USB 数据线连接</p>
+        <p>请通过USB数据线连接</p>
       </div>
       <div className="hub-bottom">
         <button onClick={onDemo} disabled={busy}>
