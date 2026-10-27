@@ -9,12 +9,14 @@ const mocks = vi.hoisted(() => ({
   backup: vi.fn(),
   request: vi.fn(),
   authorized: vi.fn(),
+  identifyHid: vi.fn(),
+  identifySerial: vi.fn(),
 }));
 vi.mock('../protocols/discovery', () => ({
   requestDeviceAccess: mocks.request,
   authorizedDevices: mocks.authorized,
-  identifyHid: () => null,
-  identifySerial: () => null,
+  identifyHid: mocks.identifyHid,
+  identifySerial: mocks.identifySerial,
 }));
 vi.mock('../protocols/via', () => ({ ViaDriver: { connect: mocks.neo } }));
 vi.mock('../protocols/zmk', () => ({ ZmkDriver: { connect: mocks.tofu } }));
@@ -33,6 +35,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.backup.mockResolvedValue(undefined);
   mocks.authorized.mockResolvedValue([]);
+  mocks.identifyHid.mockReturnValue(null);
+  mocks.identifySerial.mockReturnValue(null);
 });
 afterEach(async () => {
   for (const model of ['neo75cu', 'tofu-pad'] as const) {
@@ -247,6 +251,42 @@ describe('device center and independent sessions', () => {
 });
 
 describe('automatic connection', () => {
+  it.each(['neo75cu', 'tofu-pad'] as const)(
+    '%s reconnects from its existing grant after a real plug event, including after manual disconnect',
+    async (model) => {
+      const hid = new EventTarget(),
+        serial = new EventTarget();
+      vi.stubGlobal('navigator', { hid, serial });
+      const handle = { getInfo: () => ({}) };
+      const access =
+        model === 'neo75cu'
+          ? { model, transport: 'hid', device: handle }
+          : { model, transport: 'serial', port: handle };
+      const connect = model === 'neo75cu' ? mocks.neo : mocks.tofu;
+      const identify = model === 'neo75cu' ? mocks.identifyHid : mocks.identifySerial;
+      identify.mockReturnValue(access);
+      mocks.authorized.mockResolvedValue([access]);
+      connect.mockImplementation(async () => new HardwareFixture(model));
+      const stop = watchDevices();
+      try {
+        await vi.waitFor(() => expect(state().sessions[model]?.connection).toBe('device'));
+        expect(state().page).toBe('devices');
+        await state().disconnect(model);
+        expect(state().autoConnectBlocked).toContain(model);
+        const event = new Event('connect');
+        // Current Web Serial events target the SerialPort; WebHID supplies device.
+        Object.defineProperty(event, model === 'neo75cu' ? 'device' : 'target', { value: handle });
+        (model === 'neo75cu' ? hid : serial).dispatchEvent(event);
+        await vi.waitFor(() => expect(state().sessions[model]?.connection).toBe('device'));
+        expect(state().autoConnectBlocked).not.toContain(model);
+        expect(connect).toHaveBeenCalledTimes(2);
+        expect(mocks.request).not.toHaveBeenCalled();
+        expect(state().page).toBe('devices');
+      } finally {
+        stop();
+      }
+    },
+  );
   it('adds a discovered board without navigating away or altering another draft', async () => {
     await state().connect('neo75cu', true);
     state().edit(0, { type: 'via', code: 4 });

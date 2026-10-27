@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 declare global {
   interface Window {
     __transitionFrame: { ready: boolean; animations: Animation[]; transition: ViewTransition };
+    __keyboardFixture: { unplug(): void; plug(): void };
   }
 }
 
@@ -174,8 +175,10 @@ for (const mode of ['native', 'reduced', 'unsupported'] as const) {
   });
 }
 
-async function mockConnectedKeyboard(page: Page) {
-  await page.addInitScript(() => {
+async function mockConnectedKeyboard(page: Page, initiallyAuthorized = true) {
+  await page.addInitScript((initiallyAuthorized) => {
+    let plugged = true;
+    let authorized = initiallyAuthorized || sessionStorage.getItem('fixture-hid-grant') === '1';
     class KeyboardFixture extends EventTarget {
       vendorId = 0x36b0;
       productId = 0x3021;
@@ -183,6 +186,7 @@ async function mockConnectedKeyboard(page: Page) {
       collections = [{ usagePage: 0xff60, usage: 0x61 }];
       opened = false;
       async open() {
+        if (this.opened) throw new DOMException('Already opened', 'InvalidStateError');
         this.opened = true;
         document.documentElement.dataset.deviceOpened = '1';
       }
@@ -204,12 +208,31 @@ async function mockConnectedKeyboard(page: Page) {
     const hid = Object.assign(new EventTarget(), {
       getDevices: async () => {
         document.documentElement.dataset.deviceScanned = '1';
+        return authorized && plugged ? [keyboard] : [];
+      },
+      requestDevice: async () => {
+        document.documentElement.dataset.permissionRequests = '1';
+        document.documentElement.dataset.permissionActivated = String(
+          navigator.userActivation.isActive,
+        );
+        if (!plugged) return [];
+        authorized = true;
+        sessionStorage.setItem('fixture-hid-grant', '1');
         return [keyboard];
       },
-      requestDevice: async () => [keyboard],
     });
+    window.__keyboardFixture = {
+      unplug() {
+        plugged = false;
+        hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: keyboard }));
+      },
+      plug() {
+        plugged = true;
+        hid.dispatchEvent(Object.assign(new Event('connect'), { device: keyboard }));
+      },
+    };
     Object.defineProperty(navigator, 'hid', { value: hid, configurable: true });
-  });
+  }, initiallyAuthorized);
 }
 
 async function demo(page: Page, model = 'Neo75 Cu', autoSave = false) {
@@ -510,6 +533,7 @@ test('a device card disconnects independently without entering its workspace and
   await page.evaluate(() => navigator.hid.dispatchEvent(new Event('connect')));
   await expect(page.getByRole('heading', { name: '请连接设备', exact: true })).toBeVisible();
   await page.getByTestId('connect-device').click();
+  await page.getByRole('menuitem', { name: '连接 VIA', exact: true }).click();
   await expect(page.locator('.connected-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true }).click();
   await expect(page.locator('.connection-badge')).toHaveText('USB 已连接');
@@ -541,7 +565,7 @@ test('installed cache serves the application without network', async ({ page, co
   await context.setOffline(false);
 });
 
-test('one add button offers the other native list only after an explicit follow-up click', async ({
+test('the connection menu opens only the chosen native picker without a model selection step', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -550,6 +574,7 @@ test('one add button offers the other native list only after an explicit follow-
       getDevices: async () => [],
       requestDevice: async () => {
         document.documentElement.dataset.permissionRequests = '1';
+        document.documentElement.dataset.hidActivation = String(navigator.userActivation.isActive);
         return [];
       },
     });
@@ -558,6 +583,9 @@ test('one add button offers the other native list only after an explicit follow-
       getPorts: async () => [],
       requestPort: async () => {
         document.documentElement.dataset.serialRequests = '1';
+        document.documentElement.dataset.serialActivation = String(
+          navigator.userActivation.isActive,
+        );
         throw new DOMException('Cancelled', 'NotFoundError');
       },
     });
@@ -572,13 +600,24 @@ test('one add button offers the other native list only after an explicit follow-
   await expect(page.getByTestId('connect-device')).toHaveText('添加设备');
   await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
   await page.getByTestId('connect-device').click();
-  await expect(page.locator('html')).toHaveAttribute('data-permission-requests', '1');
-  const fallback = page.getByRole('dialog', { name: '没有看到设备？', exact: true });
-  await expect(fallback).toBeVisible();
-  await expect(fallback).not.toContainText(/HID|Serial|Neo75|TOFU/);
+  const menu = page.getByRole('menu', { name: '选择连接方式', exact: true });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem')).toHaveCount(2);
+  await expect(menu).toContainText('Neo75 Cu');
+  await expect(menu).toContainText('TOFU PAD');
+  await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
   await expect(page.locator('html')).not.toHaveAttribute('data-serial-requests', '1');
-  await fallback.getByRole('button', { name: '继续查找', exact: true }).click();
+  await page.getByRole('menuitem', { name: '连接 VIA', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-permission-requests', '1');
+  await expect(page.locator('html')).toHaveAttribute('data-hid-activation', 'true');
+  await expect(menu).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('html')).not.toHaveAttribute('data-serial-requests', '1');
+  await page.getByTestId('connect-device').click();
+  await page.getByRole('menuitem', { name: '连接 ZMK Studio', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-serial-requests', '1');
+  await expect(page.locator('html')).toHaveAttribute('data-serial-activation', 'true');
+  await expect(menu).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.connected-card')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -601,6 +640,68 @@ test('separate demos keep their drafts and tester shortcuts do not undo configur
   await page.getByRole('button', { name: '按键测试', exact: true }).click();
   await page.keyboard.press('Control+z');
   await expect(page.locator('.save-state')).toContainText('1 个按键');
+});
+
+test('a native selection creates a device card and later grants and plug events reconnect without another picker', async ({
+  page,
+}) => {
+  await mockConnectedKeyboard(page, false);
+  await page.goto('/');
+  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await page.getByTestId('connect-device').click();
+  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await page.getByRole('menuitem', { name: '连接 VIA', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-permission-activated', 'true');
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true })).toBeVisible();
+  await expect(page.locator('.sidebar')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
+  await page.evaluate(() => window.__keyboardFixture.unplug());
+  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await page.evaluate(() => window.__keyboardFixture.plug());
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await page.getByRole('button', { name: '断开 Neo75 Cu', exact: true }).click();
+  await expect(page.locator('.connected-card')).toHaveCount(0);
+  await page.evaluate(() => navigator.hid.dispatchEvent(new Event('connect')));
+  await expect(page.getByRole('heading', { name: '请连接设备', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    window.__keyboardFixture.unplug();
+    window.__keyboardFixture.plug();
+  });
+  await expect(page.locator('.connected-card')).toHaveCount(1);
+  await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+});
+
+test('the connection menu fits small screens and supports keyboard navigation and dismissal', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const trigger = page.getByTestId('connect-device');
+  const menu = page.getByRole('menu', { name: '选择连接方式', exact: true });
+  await trigger.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: '连接 VIA', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem', { name: '连接 ZMK Studio', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 680 });
+    await trigger.click();
+    const bounds = await menu.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    expect(bounds!.y).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(680);
+    await page.getByRole('heading', { name: '请连接设备', exact: true }).click();
+    await expect(menu).toHaveCount(0);
+  }
+  await expect(page.locator('.connected-card')).toHaveCount(0);
 });
 
 test('the demo opens Neo75 Cu directly and an explicit demo URL never scans real devices', async ({
@@ -641,7 +742,7 @@ test('a connected Neo stays connected while its demo opens in an isolated tab', 
   await expect(page.locator('.save-state')).toHaveText('已保存到键盘');
 });
 
-test('adding another device uses the remaining connection path without asking for a protocol', async ({
+test('selecting ZMK leaves an existing VIA device connected and does not enter its workspace', async ({
   page,
 }) => {
   await mockConnectedKeyboard(page);
@@ -660,10 +761,10 @@ test('adding another device uses the remaining connection path without asking fo
   await page.goto('/');
   await expect(page.locator('.connected-card')).toHaveCount(1);
   await page.getByTestId('connect-device').click();
+  await page.getByRole('menuitem', { name: '连接 ZMK Studio', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-serial-requests', '1');
-  await expect(page.getByRole('dialog', { name: '没有看到设备？' })).toBeVisible();
-  await page.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.connected-card')).toHaveCount(1);
   await expect(page.locator('.sidebar')).toHaveCount(0);
 });
@@ -684,6 +785,7 @@ test('a permission failure is shown directly without offering an unrelated devic
   });
   await page.goto('/');
   await page.getByTestId('connect-device').click();
+  await page.getByRole('menuitem', { name: '连接 VIA', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('设备访问被浏览器阻止');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByTestId('connect-device')).toBeEnabled();
@@ -733,6 +835,7 @@ test('a serial open failure gives a recovery hint without claiming a connection 
   await expect(page.getByTestId('connect-device')).toBeEnabled();
   await page.getByRole('button', { name: '关闭提示', exact: true }).click();
   await page.getByTestId('connect-device').click();
+  await page.getByRole('menuitem', { name: '连接 ZMK Studio', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('关闭其他驱动页面');
 });
 test('profiles belong to the selected keyboard and cannot import another model', async ({
