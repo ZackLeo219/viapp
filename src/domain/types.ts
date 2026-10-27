@@ -1,3 +1,5 @@
+import type { BehaviorBindingParametersSet } from '@zmkfirmware/zmk-studio-ts-client/behaviors';
+import { neoLayout } from './layouts';
 export type ModelId = 'neo75cu' | 'tofu-pad';
 export type Binding =
   | { type: 'via'; code: number }
@@ -18,13 +20,24 @@ export interface PhysicalKey {
 export interface Layer {
   id: number;
   name: string;
+  storedName?: string;
   bindings: Binding[];
 }
+// Keep unnamed layers stable across reordering and older profile imports.
+export const defaultLayerName = (id: number) => (id === 0 ? '基础层' : `层 ${id}`);
+export const layerName = (layer: Layer) =>
+  layer.storedName === '' ? defaultLayerName(layer.id) : layer.storedName || layer.name;
 export interface Behavior {
   id: number;
   name: string;
   kind: 'key' | 'transparent' | 'none' | 'momentary' | 'toggle' | 'other';
   parameterCount: number;
+  metadata?: BehaviorBindingParametersSet[];
+}
+export interface DeviceInfo {
+  firmware?: string;
+  layerCapacity?: number;
+  physicalLayouts?: { id: number; name: string; keys: PhysicalKey[] }[];
 }
 export interface DeviceSnapshot {
   model: ModelId;
@@ -41,11 +54,12 @@ export interface DeviceSnapshot {
   locked: boolean;
   capturedAt: string;
   firmwareUnsaved: boolean;
+  deviceInfo?: DeviceInfo;
 }
 export interface Change {
   layerId: number;
   index: number;
-  before: Binding;
+  before: Binding | null;
   after: Binding;
 }
 export interface Diagnostic {
@@ -58,6 +72,11 @@ export interface Driver {
   read(): Promise<DeviceSnapshot>;
   writeBinding(layerId: number, index: number, binding: Binding): Promise<void>;
   writeMacros(macros: number[][]): Promise<void>;
+  writeLayout?(options: number): Promise<void>;
+  writeLayers?(layers: Layer[]): Promise<void>;
+  addLayer?(): Promise<void>;
+  discardChanges?(): Promise<void>;
+  readMatrix?(): Promise<number[] | null>;
   commit(): Promise<void>;
   close(): Promise<void>;
   onDisconnect?: (reason: string) => void;
@@ -74,35 +93,57 @@ export const equalBinding = (a: Binding, b: Binding): boolean =>
       a.param1 === b.param1 &&
       a.param2 === b.param2);
 export function changesBetween(before: DeviceSnapshot, after: DeviceSnapshot): Change[] {
-  assertCompatible(before, after);
-  return before.layers.flatMap((layer) => {
-    const next = after.layers.find((l) => l.id === layer.id)!;
+  assertCompatible(before, after, true);
+  return after.layers.flatMap((layer) => {
+    const previous = before.layers.find((l) => l.id === layer.id);
     return layer.bindings.flatMap((binding, index) =>
-      equalBinding(binding, next.bindings[index])
+      previous && equalBinding(previous.bindings[index], binding)
         ? []
-        : [{ layerId: layer.id, index, before: binding, after: next.bindings[index] }],
+        : [{ layerId: layer.id, index, before: previous?.bindings[index] ?? null, after: binding }],
     );
   });
 }
-export function assertCompatible(a: DeviceSnapshot, b: DeviceSnapshot): void {
+export function assertCompatible(a: DeviceSnapshot, b: DeviceSnapshot, editing = false): void {
+  const layerChanges = editing && a.protocol === 'zmk' && !!a.deviceInfo?.layerCapacity;
   if (
     a.model !== b.model ||
     a.protocol !== b.protocol ||
     a.protocolVersion !== b.protocolVersion ||
     a.identity !== b.identity ||
-    a.layoutOptions !== b.layoutOptions ||
+    ((!editing || a.protocol !== 'via') && a.layoutOptions !== b.layoutOptions) ||
     a.macroBufferSize !== b.macroBufferSize ||
     a.macros.length !== b.macros.length ||
-    a.layers.length !== b.layers.length ||
-    a.layers.some(
-      (l) => !b.layers.find((x) => x.id === l.id && x.bindings.length === l.bindings.length),
-    )
+    (!layerChanges &&
+      (a.layers.length !== b.layers.length ||
+        a.layers.some(
+          (l) => !b.layers.find((x) => x.id === l.id && x.bindings.length === l.bindings.length),
+        ))) ||
+    b.layers.some((l) => l.bindings.length !== a.layers[0].bindings.length) ||
+    (layerChanges &&
+      (b.layers.length < 1 ||
+        b.layers.length > (a.deviceInfo?.layerCapacity ?? a.layers.length) ||
+        new Set(b.layers.map((l) => l.id)).size !== b.layers.length ||
+        b.layers.some(
+          (l) =>
+            !Number.isInteger(l.id) ||
+            l.id < 0 ||
+            l.id >= (a.deviceInfo?.layerCapacity ?? a.layers.length),
+        )))
   ) {
     throw new Error('配置与当前设备或固件不匹配，未进行写入。请重新读取设备。');
   }
-  if (JSON.stringify(a.keys) !== JSON.stringify(b.keys))
+  if (editing && a.protocol === 'via' && a.layoutOptions !== b.layoutOptions) {
+    if (
+      b.layoutOptions < 0 ||
+      b.layoutOptions > 15 ||
+      !Number.isInteger(b.layoutOptions) ||
+      JSON.stringify(b.keys) !== JSON.stringify(neoLayout(b.layoutOptions))
+    )
+      throw new Error('配列不符合原厂定义。');
+  } else if (JSON.stringify(a.keys) !== JSON.stringify(b.keys))
     throw new Error('设备的物理配列已改变，请重新读取配置。');
-  if (a.protocol === 'zmk' && JSON.stringify(a.behaviors) !== JSON.stringify(b.behaviors))
+  const identity = (s: DeviceSnapshot) => s.behaviors.map(({ metadata: _metadata, ...b }) => b);
+  if (a.protocol === 'zmk' && JSON.stringify(identity(a)) !== JSON.stringify(identity(b)))
     throw new Error('ZMK 行为定义已改变，请重新读取配置。');
 }
 export const clone = <T>(value: T): T => structuredClone(value);

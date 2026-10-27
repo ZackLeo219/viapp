@@ -1,9 +1,9 @@
-import type {
-  GetBehaviorDetailsResponse,
-  BehaviorParameterValueDescription,
-} from '@zmkfirmware/zmk-studio-ts-client/behaviors';
-import type { Behavior, Binding, DeviceSnapshot, Driver } from '../domain/types';
+import type { GetBehaviorDetailsResponse } from '@zmkfirmware/zmk-studio-ts-client/behaviors';
+import type { Behavior, Binding, DeviceSnapshot, Driver, Layer } from '../domain/types';
+import { defaultLayerName, layerName } from '../domain/types';
 import type { ZmkRpc } from './zmk-rpc';
+import { normalizeEmptyBindings, validParameter } from '../domain/behaviors';
+export { validParameter } from '../domain/behaviors';
 
 export const TOFU_USB = { usbVendorId: 0x9d5b, usbProductId: 0x2566 };
 const behaviorKinds: Record<string, Behavior['kind']> = {
@@ -29,30 +29,8 @@ export function describeBehavior(info: GetBehaviorDetailsResponse): Behavior {
     name: info.displayName,
     kind: behaviorKinds[info.displayName.toLowerCase()] ?? 'other',
     parameterCount: parameters.length ? Math.max(...parameters) : 2,
+    metadata: structuredClone(info.metadata),
   };
-}
-export function validParameter(
-  value: number,
-  specs: BehaviorParameterValueDescription[],
-  layerIds: number[],
-): boolean {
-  // Studio represents an unused parameter as an empty list, as well as explicit nil.
-  if (!specs.length) return value === 0;
-  return specs.some((spec) => {
-    if (spec.nil !== undefined) return value === 0;
-    if (spec.constant !== undefined) return value === spec.constant;
-    if (spec.range) return value >= spec.range.min && value <= spec.range.max;
-    if (spec.layerId) return layerIds.includes(value);
-    if (spec.hidUsage) {
-      const page = (value >>> 16) & 255,
-        usage = value & 65535;
-      return (
-        (page === 7 && usage <= spec.hidUsage.keyboardMax) ||
-        (page === 12 && usage <= spec.hidUsage.consumerMax)
-      );
-    }
-    return false;
-  });
 }
 
 export class ZmkDriver implements Driver {
@@ -126,9 +104,10 @@ export class ZmkDriver implements Driver {
         .join('')}`,
       protocol: 'zmk',
       protocolVersion: 1,
-      layers: keymap.layers.map((l, index) => ({
+      layers: keymap.layers.map((l) => ({
         id: l.id,
-        name: l.name || (index === 0 ? '基础层' : `功能层 ${index}`),
+        name: l.name || defaultLayerName(l.id),
+        storedName: l.name,
         bindings: l.bindings.map((b): Binding => ({ type: 'zmk', ...b })),
       })),
       keys: active.keys.map((k, index) => ({
@@ -149,6 +128,27 @@ export class ZmkDriver implements Driver {
       locked: lockState !== 1,
       firmwareUnsaved: unsaved,
       capturedAt: new Date().toISOString(),
+      deviceInfo: {
+        firmware: [...this.metadata.values()]
+          .map((b) => /^zmk_firmware_version_(.+)$/i.exec(b.displayName)?.[1])
+          .find(Boolean),
+        layerCapacity: Math.min(32, keymap.layers.length + keymap.availableLayers),
+        physicalLayouts: physical!.layouts.map((layout, id) => ({
+          id,
+          name: layout.name,
+          keys: layout.keys.map((k, index) => ({
+            id: String(index),
+            index,
+            x: k.x / 100,
+            y: k.y / 100,
+            w: k.width / 100,
+            h: k.height / 100,
+            rotation: k.r / 100,
+            rx: k.rx / 100,
+            ry: k.ry / 100,
+          })),
+        })),
+      },
     };
     if (
       snapshot.keys.some(
@@ -163,8 +163,8 @@ export class ZmkDriver implements Driver {
       )
     )
       throw new Error('物理布局坐标无效。');
-    this.latest = snapshot;
-    return snapshot;
+    this.latest = normalizeEmptyBindings(snapshot);
+    return this.latest;
   }
   async writeBinding(layerId: number, index: number, binding: Binding) {
     if (!this.latest || binding.type !== 'zmk' || this.latest.locked)
@@ -207,6 +207,75 @@ export class ZmkDriver implements Driver {
     });
     if (response.keymap?.setLayerBinding !== 0)
       throw new Error(`原厂固件拒绝修改按键（${response.keymap?.setLayerBinding ?? '无响应'}）。`);
+  }
+  async writeLayers(layers: Layer[]) {
+    const current = this.latest;
+    if (!current || current.locked || !current.deviceInfo?.layerCapacity)
+      throw new Error('当前固件不支持图层管理。');
+    const capacity = current.deviceInfo.layerCapacity ?? current.layers.length;
+    if (
+      !layers.length ||
+      layers.length > capacity ||
+      new Set(layers.map((l) => l.id)).size !== layers.length ||
+      layers.some((l) => !Number.isInteger(l.id) || l.id < 0 || l.id >= capacity)
+    )
+      throw new Error('图层数量超出设备限制。');
+    if (layers[0].id !== current.layers[0].id) throw new Error('请保留基础层的位置。');
+    const ids = current.layers.map((l) => l.id);
+    const names = new Map(current.layers.map((l) => [l.id, layerName(l)]));
+    if (layers.some((layer) => names.has(layer.id) && names.get(layer.id) !== layerName(layer)))
+      throw new Error('此固件暂不支持修改图层名称。');
+    // Drop surplus layers before restoring archived layers so reserved capacity can be reused.
+    for (let index = ids.length - 1; index >= 0; index--) {
+      if (layers.some((l) => l.id === ids[index])) continue;
+      const response = (await this.rpc.call({ keymap: { removeLayer: { layerIndex: index } } }))
+        .keymap?.removeLayer;
+      if (!response?.ok) throw new Error('设备未能删除图层。');
+      ids.splice(index, 1);
+    }
+    for (const layer of layers) {
+      if (ids.includes(layer.id)) continue;
+      const response = (
+        await this.rpc.call({
+          keymap: { restoreLayer: { layerId: layer.id, atIndex: ids.length } },
+        })
+      ).keymap?.restoreLayer;
+      if (response?.ok?.id !== layer.id) throw new Error('设备未能恢复图层。');
+      ids.push(layer.id);
+      names.set(layer.id, response.ok.name || defaultLayerName(layer.id));
+    }
+    for (let index = 0; index < layers.length; index++) {
+      const layer = layers[index],
+        startIndex = ids.indexOf(layer.id);
+      if (startIndex !== index) {
+        const response = (
+          await this.rpc.call({ keymap: { moveLayer: { startIndex, destIndex: index } } })
+        ).keymap?.moveLayer;
+        if (!response?.ok || response.ok.layers[index]?.id !== layer.id)
+          throw new Error('设备未能调整图层顺序。');
+        ids.splice(index, 0, ids.splice(startIndex, 1)[0]);
+      }
+      const name = layerName(layer);
+      if (names.get(layer.id) !== name) throw new Error('此固件暂不支持恢复不同的图层名称。');
+    }
+    // Binding validation must use the new set of layer IDs.
+    this.latest = { ...current, layers: structuredClone(layers) };
+  }
+  async addLayer() {
+    if (
+      !this.latest ||
+      this.latest.locked ||
+      this.latest.layers.length >= (this.latest.deviceInfo?.layerCapacity ?? 0)
+    )
+      throw new Error('没有可用图层。');
+    const response = (await this.rpc.call({ keymap: { addLayer: {} } })).keymap?.addLayer;
+    if (!response?.ok?.layer || this.latest.layers.some((l) => l.id === response.ok!.layer!.id))
+      throw new Error('设备未能新增图层。');
+  }
+  async discardChanges() {
+    const response = (await this.rpc.call({ keymap: { discardChanges: true } })).keymap
+      ?.discardChanges;
+    if (response !== true) throw new Error('设备未能撤销修改。');
   }
   async writeMacros(): Promise<void> {
     throw new Error('原厂 ZMK Studio 暂未开放新建宏；可以使用固件已有的宏行为。');

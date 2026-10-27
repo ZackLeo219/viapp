@@ -20,6 +20,42 @@ function validBinding(b: unknown, protocol: string): b is Binding {
         integer(b.param1, 0, 0xffffffff) &&
         integer(b.param2, 0, 0xffffffff);
 }
+function validMetadata(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length <= 32 &&
+    value.every(
+      (set) =>
+        record(set) &&
+        ['param1', 'param2'].every(
+          (key) =>
+            Array.isArray(set[key]) &&
+            set[key].length <= 64 &&
+            set[key].every((spec: unknown) => {
+              if (!record(spec) || !text(spec.name)) return false;
+              const kinds = ['nil', 'constant', 'range', 'hidUsage', 'layerId'].filter(
+                (k) => spec[k] !== undefined,
+              );
+              if (kinds.length !== 1) return false;
+              if (spec.constant !== undefined) return integer(spec.constant, 0, 0xffffffff);
+              if (spec.range !== undefined)
+                return (
+                  record(spec.range) &&
+                  integer(spec.range.min, 0, 0xffffffff) &&
+                  integer(spec.range.max, spec.range.min, 0xffffffff)
+                );
+              if (spec.hidUsage !== undefined)
+                return (
+                  record(spec.hidUsage) &&
+                  integer(spec.hidUsage.keyboardMax, 0, 65535) &&
+                  integer(spec.hidUsage.consumerMax, 0, 65535)
+                );
+              return record(spec[kinds[0]]);
+            }),
+        ),
+    )
+  );
+}
 export function validateSnapshot(value: unknown): DeviceSnapshot {
   const bad = () => {
     throw new Error('配置文件结构无效或超出允许范围，未修改当前草稿。');
@@ -51,6 +87,7 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
       !record(layer) ||
       !integer(layer.id, 0, 255) ||
       !text(layer.name, 80) ||
+      (layer.storedName !== undefined && !text(layer.storedName, 80)) ||
       !Array.isArray(layer.bindings) ||
       layer.bindings.length < 1 ||
       layer.bindings.length > 128 ||
@@ -103,7 +140,8 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
         !integer(b.id, 0, 65535) ||
         !text(b.name) ||
         !['key', 'none', 'transparent', 'momentary', 'toggle', 'other'].includes(String(b.kind)) ||
-        !integer(b.parameterCount, 0, 2),
+        !integer(b.parameterCount, 0, 2) ||
+        (b.metadata !== undefined && !validMetadata(b.metadata)),
     )
   )
     return bad();
@@ -119,6 +157,44 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
       s.macros.flat().length + s.macros.length === s.macroBufferSize)
   )
     return bad();
+  if (s.deviceInfo !== undefined) {
+    const info = s.deviceInfo;
+    if (
+      !record(info) ||
+      (info.firmware !== undefined && !text(info.firmware, 128)) ||
+      (info.layerCapacity !== undefined && !integer(info.layerCapacity, s.layers.length, 32))
+    )
+      return bad();
+    if (info.physicalLayouts !== undefined) {
+      if (
+        !Array.isArray(info.physicalLayouts) ||
+        info.physicalLayouts.length > 32 ||
+        info.physicalLayouts.some(
+          (layout) =>
+            !record(layout) ||
+            !integer(layout.id, 0, 31) ||
+            !text(layout.name, 128) ||
+            !Array.isArray(layout.keys) ||
+            layout.keys.length > 128 ||
+            layout.keys.some(
+              (key: unknown) =>
+                !record(key) ||
+                !text(key.id, 64) ||
+                !integer(key.index, 0, 127) ||
+                !['x', 'y', 'w', 'h'].every(
+                  (n) =>
+                    typeof key[n] === 'number' &&
+                    Number.isFinite(key[n]) &&
+                    Math.abs(key[n]) <= 100,
+                ) ||
+                (key.w as number) <= 0 ||
+                (key.h as number) <= 0,
+            ),
+        )
+      )
+        return bad();
+    }
+  }
   return clone(s) as unknown as DeviceSnapshot;
 }
 export function parseProfile(contents: string): { name: string; snapshot: DeviceSnapshot } {

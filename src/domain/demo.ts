@@ -1,5 +1,12 @@
 import { neoLayout, tofuPreviewLayout } from './layouts';
-import { clone, type Binding, type DeviceSnapshot, type Driver, type ModelId } from './types';
+import {
+  clone,
+  type Binding,
+  type DeviceSnapshot,
+  type Driver,
+  type ModelId,
+  type Layer,
+} from './types';
 
 export function previewSnapshot(model: ModelId): DeviceSnapshot {
   const neo = model === 'neo75cu';
@@ -54,10 +61,64 @@ export function previewSnapshot(model: ModelId): DeviceSnapshot {
     behaviors: neo
       ? []
       : [
-          { id: 1, name: 'Key Press', kind: 'key', parameterCount: 1 },
+          {
+            id: 1,
+            name: 'Key Press',
+            kind: 'key',
+            parameterCount: 1,
+            metadata: [
+              {
+                param1: [{ name: 'Key', hidUsage: { keyboardMax: 255, consumerMax: 4095 } }],
+                param2: [],
+              },
+            ],
+          },
           { id: 2, name: 'None', kind: 'none', parameterCount: 0 },
           { id: 3, name: 'Transparent', kind: 'transparent', parameterCount: 0 },
-          { id: 4, name: 'Momentary Layer', kind: 'momentary', parameterCount: 1 },
+          {
+            id: 4,
+            name: 'Momentary Layer',
+            kind: 'momentary',
+            parameterCount: 1,
+            metadata: [{ param1: [{ name: 'Layer', layerId: {} }], param2: [] }],
+          },
+          ...['Layer-Tap(TP)', 'Layer-Tap(HP)', 'Mod-Tap(HP)', 'Mod-Tap(TP)'].map((name, i) => ({
+            id: 10 + i,
+            name,
+            kind: 'other' as const,
+            parameterCount: 2,
+            metadata: [
+              {
+                param1:
+                  i < 2
+                    ? [{ name: 'Layer', layerId: {} }]
+                    : [{ name: 'Key', hidUsage: { keyboardMax: 255, consumerMax: 4095 } }],
+                param2: [{ name: 'Key', hidUsage: { keyboardMax: 255, consumerMax: 4095 } }],
+              },
+            ],
+          })),
+          {
+            id: 20,
+            name: 'Mouse Key Press',
+            kind: 'other',
+            parameterCount: 1,
+            metadata: [
+              {
+                param1: ['LBTN', 'RBTN', 'MBTN', 'MFWD', 'MBWD'].map((name, i) => ({
+                  name,
+                  constant: 1 << i,
+                })),
+                param2: [],
+              },
+            ],
+          },
+          {
+            id: 21,
+            name: 'Layer To',
+            kind: 'other',
+            parameterCount: 1,
+            metadata: [{ param1: [{ name: 'Layer', layerId: {} }], param2: [] }],
+          },
         ],
     layoutOptions: 0,
     macros: neo ? Array.from({ length: 16 }, () => []) : [],
@@ -65,6 +126,7 @@ export function previewSnapshot(model: ModelId): DeviceSnapshot {
     locked: false,
     capturedAt: new Date().toISOString(),
     firmwareUnsaved: false,
+    deviceInfo: neo ? {} : { firmware: '演示', layerCapacity: 4 },
   };
 }
 export class DemoDriver implements Driver {
@@ -80,6 +142,31 @@ export class DemoDriver implements Driver {
   }
   async writeMacros(macros: number[][]) {
     this.snapshot.macros = clone(macros);
+  }
+  async writeLayout(options: number) {
+    if (this.model !== 'neo75cu') throw new Error('不支持此配列。');
+    this.snapshot.layoutOptions = options;
+    this.snapshot.keys = neoLayout(options);
+  }
+  async writeLayers(layers: Layer[]) {
+    this.snapshot.layers = clone(layers);
+  }
+  async addLayer() {
+    const capacity = this.snapshot.deviceInfo?.layerCapacity ?? 0;
+    const id = Array.from({ length: capacity }, (_, i) => i).find(
+      (i) => !this.snapshot.layers.some((l) => l.id === i),
+    );
+    if (id === undefined) throw new Error('没有可用图层。');
+    this.snapshot.layers.push({
+      id,
+      name: `功能层 ${id}`,
+      bindings: this.snapshot.layers[0].bindings.map(() => ({
+        type: 'zmk',
+        behaviorId: 3,
+        param1: 0,
+        param2: 0,
+      })),
+    });
   }
   async commit() {
     this.snapshot.capturedAt = new Date().toISOString();

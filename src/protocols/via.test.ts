@@ -9,6 +9,7 @@ function fakeHid() {
   const macros = new Uint8Array(128);
   macros.set([65, 66, 0, 0]);
   const requests: number[][] = [];
+  let layout = 0;
   const device = {
     opened: true,
     addEventListener: (_: string, fn: (e: HIDInputReportEvent) => void) => {
@@ -24,7 +25,12 @@ function fakeHid() {
       const b = new Uint8Array(source);
       requests.push(Array.from(b));
       const r = new Uint8Array(b);
-      if (b[0] === 1) {
+      if (b[0] === 2 && b[1] === 2) r[5] = layout;
+      else if (b[0] === 3 && b[1] === 2) layout = b[5];
+      else if (b[0] === 2 && b[1] === 3) {
+        r[11] = 0x20;
+        r[12] = 1;
+      } else if (b[0] === 1) {
         r[1] = 0;
         r[2] = 12;
       } else if (b[0] === 0x11) r[1] = 2;
@@ -64,6 +70,9 @@ describe('VIA stock adapter', () => {
     await driver.writeMacros([[67, 68], [69]]);
     expect(fake.macros.slice(0, 6)).toEqual(Uint8Array.from([67, 68, 0, 69, 0, 0]));
     expect(fake.macros[127]).toBe(0);
+    await driver.writeLayout(15);
+    expect((await driver.read()).layoutOptions).toBe(15);
+    expect(await driver.readMatrix()).toEqual([64, 77]);
     await driver.close();
   });
   it('closes on timeout so late replies cannot satisfy another request', async () => {

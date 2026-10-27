@@ -51,6 +51,7 @@ pnpm test:package     # 检查当前系统的离线包
 node --experimental-websocket scripts/hardware-smoke.mjs                 # 只读
 node --experimental-websocket scripts/hardware-smoke.mjs --write        # 临时改键、读回并恢复
 node --experimental-websocket scripts/hardware-smoke.mjs --write --macros
+node --experimental-websocket scripts/hardware-smoke.mjs --features     # 配列、图层与高级按键
 ```
 
 生产页面的连接与草稿隔离测试：先运行 `pnpm preview`，再执行 `node --experimental-websocket scripts/hardware-ui-smoke.mjs`。该脚本关闭自动保存，不写入设备。测试备份与结果放在被 Git 忽略的 `.hardware-test-results/`。

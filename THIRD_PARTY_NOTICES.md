@@ -12,6 +12,9 @@ VIAPP's application code is independently written and licensed under MIT. Third-
 - https://zmk.dev/docs/development/studio-rpc-protocol
 - https://zmk.dev/docs/features/studio
 - https://zmk.dev/docs/hardware-integration/physical-layouts
+- https://github.com/zmkfirmware/zmk-studio-messages/blob/main/proto/zmk/keymap.proto
+- https://github.com/zmkfirmware/zmk/blob/main/app/src/studio/keymap_subsystem.c
+- https://github.com/zmkfirmware/zmk/blob/main/app/src/behavior.c
 
 ## Neo75 Cu original tri-mode layout and protocol facts
 
@@ -27,6 +30,7 @@ VIA command identifiers and encoding facts were checked against the public proto
 - https://docs.qmk.fm/features/rawhid
 - https://github.com/qmk/qmk_firmware/blob/master/quantum/via.h
 - https://github.com/qmk/qmk_firmware/blob/master/quantum/via.c
+- https://github.com/qmk/qmk_firmware/blob/0.24.0/quantum/via.c (VIA 12 matrix-state packet)
 - https://github.com/the-via/app/tree/main/src/utils/key-to-byte
 
 ## TOFU PAD

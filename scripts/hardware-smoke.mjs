@@ -1,5 +1,6 @@
 // Windows-only hardware verification, using a separate Chrome profile and native browser APIs.
 // Read-only by default. --write temporarily edits one binding and restores it in a finally block.
+// --features verifies device-specific settings and restores active and reserved layers.
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -10,7 +11,11 @@ import { fileURLToPath } from 'node:url';
 if (process.platform !== 'win32')
   throw new Error('请用 Windows Node.js 运行，以访问 Windows 上的真实 USB 设备。');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = join(root, '.hardware-test-results');
+const output = join(
+  root,
+  '.hardware-test-results',
+  `hardware-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+);
 await mkdir(output, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), 'viapp-browser-test-'));
 const base = 'http://localhost:5179';
@@ -158,6 +163,21 @@ try {
     console.log(
       `${model}: ${initial.keys.length} keys, ${initial.layers.length} layers, protocol ${initial.protocolVersion}, locked=${initial.locked}`,
     );
+    if (
+      (process.argv.includes('--write') || process.argv.includes('--features')) &&
+      (initial.locked || initial.firmwareUnsaved)
+    )
+      throw new Error('请先解锁设备，并在驱动中保存或撤销已有修改，再运行写入测试。');
+    if (process.argv.includes('--features')) {
+      const result = await evaluate(`(async()=>{
+        const {verifyFeatures} = await import('/scripts/hardware-features.ts');
+        return verifyFeatures(window.__hardwareDriver, window.__hardwareOriginal);
+      })()`);
+      console.log(`${model} feature verification:`, JSON.stringify(result));
+      report.push({ model, mode: 'features', ...result });
+      if (result.failure || !result.restored)
+        throw new Error(`${model} failed feature verification`);
+    }
     if (process.argv.includes('--write')) {
       const result = await evaluate(`(async()=>{
         const {sameConfiguration} = await import('/src/domain/apply.ts');
@@ -196,7 +216,7 @@ try {
         if (!macros.skipped && (!macros.verified || !macros.restored || macros.failure))
           throw new Error('Neo macro verification failed');
       }
-    } else
+    } else if (!process.argv.includes('--features'))
       report.push({
         model,
         mode: 'read-only',
@@ -210,7 +230,7 @@ try {
     JSON.stringify({ testedAt: new Date().toISOString(), report }, null, 2),
   );
   console.log(
-    process.argv.includes('--write')
+    process.argv.includes('--write') || process.argv.includes('--features')
       ? 'Hardware verification finished; original configurations restored.'
       : 'Read-only hardware verification finished.',
   );

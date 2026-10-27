@@ -10,11 +10,40 @@ import {
 } from '../domain/tester';
 import { codeForInputEvent } from '../domain/keyboard-input';
 import './TesterPage.css';
+import { useWorkspace } from '../state/workspace';
+import { MatrixTester } from './MatrixTester';
 
 type Locks = Record<'CapsLock' | 'NumLock' | 'ScrollLock', boolean | null>;
 const unknownLocks: Locks = { CapsLock: null, NumLock: null, ScrollLock: null };
 const unit = 50;
 export function TesterPage({ suspended = false }: { suspended?: boolean }) {
+  const canReadMatrix = useWorkspace(
+    (s) => s.model === 'neo75cu' && s.connection === 'device' && s.baseline.protocolVersion === 12,
+  );
+  const [physical, setPhysical] = useState(false);
+  return (
+    <>
+      {canReadMatrix && (
+        <div className="tester-mode-bar">
+          <div className="setting-segments" role="group" aria-label="测试方式">
+            <button aria-pressed={!physical} onClick={() => setPhysical(false)}>
+              按键输出
+            </button>
+            <button aria-pressed={physical} onClick={() => setPhysical(true)}>
+              物理按键
+            </button>
+          </div>
+        </div>
+      )}
+      {physical && canReadMatrix ? (
+        <MatrixTester suspended={suspended} />
+      ) : (
+        <BrowserTester suspended={suspended} />
+      )}
+    </>
+  );
+}
+function BrowserTester({ suspended = false }: { suspended?: boolean }) {
   const [state, dispatch] = useReducer(testerReducer, undefined, freshTester);
   const [layoutId, setLayoutId] = useState<TesterLayoutId>('full');
   const [legends, setLegends] = useState<KeyLegends>('win');

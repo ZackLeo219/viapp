@@ -349,3 +349,70 @@ describe('automatic connection', () => {
     expect(mocks.tofu).toHaveBeenCalledWith(port);
   });
 });
+
+describe('device settings', () => {
+  it('does not discard preexisting firmware changes when adding a layer is blocked', async () => {
+    const driver = Object.assign(new HardwareFixture('tofu-pad'), {
+      discardChanges: vi.fn(async () => {}),
+    });
+    mocks.tofu.mockResolvedValue(driver);
+    await state().connect('tofu-pad');
+    state().openDevice('tofu-pad');
+    const external = await driver.read();
+    external.firmwareUnsaved = true;
+    vi.spyOn(driver, 'read').mockResolvedValue(external);
+    const discard = vi.spyOn(driver, 'discardChanges'),
+      add = vi.spyOn(driver, 'addLayer');
+    await state().addLayer();
+    expect(state().error).toContain('设备配置已变化');
+    expect(add).not.toHaveBeenCalled();
+    expect(discard).not.toHaveBeenCalled();
+  });
+  it('keeps layout edits undoable and can restore a different layout from backup', async () => {
+    await state().connect('neo75cu', true);
+    const original = structuredClone(state().baseline);
+    state().setLayout(8);
+    expect(isDirty(state())).toBe(true);
+    expect(state().draft.keys.length).toBe(original.keys.length + 1);
+    state().undo();
+    expect(state().draft.layoutOptions).toBe(0);
+    state().redo();
+    await state().apply();
+    state().loadProfile(original);
+    expect(state().requiresReview).toBe(true);
+    await state().apply();
+    expect(state().baseline.layoutOptions).toBe(0);
+  });
+  it('copies a layer as a reviewable batch, preserving other layers', async () => {
+    await state().connect('neo75cu', true);
+    state().setAutoSave(true);
+    const original = structuredClone(state().baseline);
+    state().copyLayer(0, 2);
+    expect(state().draft.layers[2].bindings).toEqual(original.layers[0].bindings);
+    expect(state().draft.layers[1]).toEqual(original.layers[1]);
+    expect(state().requiresReview).toBe(true);
+    expect(isAutoSavePending(state())).toBe(false);
+  });
+  it('adds a reserved layer and rejects referenced deletions', async () => {
+    await state().connect('tofu-pad', true);
+    state().removeLayer(1);
+    expect(state().error).toContain('仍有按键');
+    expect(state().draft.layers).toHaveLength(2);
+    state().dismiss();
+    await state().addLayer();
+    expect(state().baseline.layers).toHaveLength(3);
+    const id = state().layerId;
+    state().moveLayer(id, -1);
+    await state().apply();
+    expect(state().baseline.layers[1].id).toBe(id);
+    const backup = structuredClone(state().baseline);
+    state().removeLayer(id);
+    expect(state().layerId).toBe(0);
+    expect(state().requiresReview).toBe(true);
+    await state().apply();
+    expect(state().baseline.layers).toHaveLength(2);
+    state().loadProfile(backup);
+    await state().apply();
+    expect(state().baseline.layers).toHaveLength(3);
+  });
+});

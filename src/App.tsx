@@ -15,6 +15,7 @@ import {
   Info,
   Keyboard as KeyboardIcon,
   Layers3,
+  SlidersHorizontal,
   LayoutGrid,
   LoaderCircle,
   MonitorCheck,
@@ -32,9 +33,13 @@ import {
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { Keyboard } from './components/Keyboard';
 import { TesterPage } from './components/TesterPage';
+import { DeviceSettings } from './components/DeviceSettings';
 import { IdleKeyboard } from './components/IdleKeyboard';
 import { DeviceConnect } from './components/DeviceConnect';
 import { KeyCapture } from './components/KeyCapture';
+import { ShortcutEditor, DualRoleEditor } from './components/AdvancedBinding';
+import { advancedKind } from './domain/behaviors';
+import { layersChanged } from './domain/apply';
 import './components/DeviceHub.css';
 import { version } from '../package.json';
 import { Modal } from './components/Modal';
@@ -58,6 +63,7 @@ import { listProfiles, removeProfile, saveProfile } from './state/database';
 const navigation = [
   { id: 'keymap', title: '按键设置', icon: KeyboardIcon },
   { id: 'macros', title: '宏编辑器', icon: Command },
+  { id: 'settings', title: '设备设置', icon: SlidersHorizontal },
   { id: 'profiles', title: '配置管理', icon: FolderCog },
   { id: 'test', title: '按键测试', icon: MonitorCheck },
 ] as const;
@@ -214,7 +220,7 @@ export default function App() {
               {hub && <ChevronRight size={16} />}
             </button>
             {navigation
-              .filter((item) => inWorkspace || item.id === 'test')
+              .filter((item) => item.id !== 'macros' || s.draft.macros.length > 0)
               .map((item) => (
                 <button
                   key={item.id}
@@ -357,7 +363,10 @@ export default function App() {
           {inWorkspace && s.draft.firmwareUnsaved && (
             <div className="alert error" role="status">
               <Info size={18} />
-              <span>键盘中有未保存的配置，请先在原配置工具中保存或撤销，再重新读取。</span>
+              <span>键盘中有未保存配置。</span>
+              <button onClick={() => s.setPage('settings')} disabled={busy}>
+                前往处理
+              </button>
             </div>
           )}
           {(s.error || s.notice) && (
@@ -375,6 +384,7 @@ export default function App() {
           {hub && <DeviceHub onDemo={openDemo} />}
           {s.page === 'keymap' && <KeymapPage key={s.model} />}
           {s.page === 'macros' && <MacrosPage />}
+          {s.page === 'settings' && inWorkspace && <DeviceSettings key={s.model} />}
           {s.page === 'profiles' && inWorkspace && <ProfilesPage key={s.model} />}
           {s.page === 'test' && inWorkspace && (
             <TesterPage key={s.model} suspended={help || review} />
@@ -412,7 +422,7 @@ export default function App() {
                             : s.draft.firmwareUnsaved
                               ? '键盘中有未保存配置'
                               : dirty
-                                ? `${[changes.length && `${changes.length} 个按键`, macroChanges && `${macroChanges} 个宏`].filter(Boolean).join('、')}尚未保存`
+                                ? `${[changes.length && `${changes.length} 个按键`, macroChanges && `${macroChanges} 个宏`, layersChanged(s.baseline, s.draft) && '图层', s.baseline.layoutOptions !== s.draft.layoutOptions && '配列'].filter(Boolean).join('、')}尚未保存`
                                 : s.connection === 'device'
                                   ? '已保存到键盘'
                                   : s.connection === 'demo'
@@ -492,12 +502,14 @@ export default function App() {
               <span>
                 层 {change.layerId} · 位置 {change.index}
               </span>
-              <strong>{labelFor(change.before, s.baseline)}</strong>
+              <strong>{change.before ? labelFor(change.before, s.baseline) : '新增'}</strong>
               <ArrowRight size={14} />
               <strong className="new-binding">{labelFor(change.after, s.draft)}</strong>
             </div>
           ))}
-          {macroChanges > 0 && <p>同时更新 {macroChanges} 个宏槽位。</p>}
+          {macroChanges > 0 && <p>更新 {macroChanges} 个宏。</p>}
+          {layersChanged(s.baseline, s.draft) && <p>更新图层顺序或数量。</p>}
+          {s.baseline.layoutOptions !== s.draft.layoutOptions && <p>更新物理配列。</p>}
         </div>
         <div className="modal-actions">
           <Button onClick={() => setReview(false)}>继续编辑</Button>
@@ -639,6 +651,7 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
 
 function KeymapPage() {
   const s = useWorkspace();
+  const [editorMode, setEditorMode] = useState<'basic' | 'shortcut' | 'dual'>('basic');
   const [capture, setCapture] = useState<{
     index: number;
     layerId: number;
@@ -697,6 +710,7 @@ function KeymapPage() {
     '媒体',
     '层',
     '设备',
+    '鼠标',
     ...(s.draft.macros.length ? ['宏'] : []),
   ];
   function assign(action: KeyAction) {
@@ -757,6 +771,7 @@ function KeymapPage() {
             selected={s.selectedIndex}
             onSelect={(index, activate = true) => {
               s.selectKey(index);
+              if (activate) setEditorMode('basic');
               setCapture((previous) =>
                 activate
                   ? { index, layerId: s.layerId, attempt: (previous?.attempt ?? 0) + 1 }
@@ -800,67 +815,114 @@ function KeymapPage() {
                 {selected ? labelFor(selected, s.draft) : <MousePointer2 size={21} />}
               </span>
             </div>
-            <KeyCapture
-              startRequest={autoCapture ? capture.attempt : null}
-              actions={actions}
-              onAssign={assign}
-              disabled={isEditingBlocked(s)}
-            />
-            <label className="search-field">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索按键或功能…"
-                aria-label="搜索按键功能"
-              />
-              {query && (
-                <button onClick={() => setQuery('')} aria-label="清空搜索">
-                  <X size={14} />
-                </button>
-              )}
-            </label>
-            <div className="category-list" aria-label="功能分类">
-              {categories
-                .filter((c) => c === '全部' || actions.some((a) => a.category === c))
-                .map((c) => (
-                  <button
-                    key={c}
-                    aria-pressed={category === c}
-                    className={category === c ? 'active' : ''}
-                    onClick={() => setCategory(c)}
-                  >
-                    {c}
-                  </button>
-                ))}
-            </div>
-            <div className="action-grid">
-              {filtered.map((a) => (
+            <div className="binding-tabs" role="group" aria-label="改键类型">
+              {(
+                [
+                  ['basic', '按键'],
+                  ['shortcut', '快捷键'],
+                  ...(s.draft.behaviors.some((b) =>
+                    ['layer-tap', 'mod-tap'].includes(advancedKind(b) ?? ''),
+                  )
+                    ? [['dual', '双功能']]
+                    : []),
+                ] as const
+              ).map(([id, title]) => (
                 <button
-                  key={a.id}
-                  disabled={!selected || isEditingBlocked(s)}
-                  onClick={() => assign(a)}
-                  title={a.description}
-                  aria-label={`设为 ${a.description}`}
+                  key={id}
+                  type="button"
+                  aria-pressed={editorMode === id}
+                  onClick={() => {
+                    setEditorMode(id as typeof editorMode);
+                    setCapture(null);
+                  }}
                 >
-                  <span>{a.label}</span>
+                  {title}
                 </button>
               ))}
-              {!filtered.length && (
-                <div className="empty-search">
-                  <Search size={23} />
-                  <p>没有匹配的功能</p>
-                  <button
-                    onClick={() => {
-                      setQuery('');
-                      setCategory('全部');
-                    }}
-                  >
-                    清空筛选
-                  </button>
-                </div>
-              )}
             </div>
+            {editorMode === 'shortcut' && (
+              <ShortcutEditor
+                key={`${s.layerId}-${s.selectedIndex}`}
+                snapshot={s.draft}
+                selected={selected}
+                disabled={isEditingBlocked(s) || s.draft.locked}
+                onApply={(binding) => s.selectedIndex !== null && s.edit(s.selectedIndex, binding)}
+              />
+            )}
+            {editorMode === 'dual' && (
+              <DualRoleEditor
+                key={`${s.layerId}-${s.selectedIndex}`}
+                snapshot={s.draft}
+                selected={selected}
+                disabled={isEditingBlocked(s) || s.draft.locked}
+                onApply={(binding) => s.selectedIndex !== null && s.edit(s.selectedIndex, binding)}
+              />
+            )}
+            {editorMode === 'basic' && (
+              <>
+                <KeyCapture
+                  startRequest={autoCapture ? capture.attempt : null}
+                  actions={actions}
+                  onAssign={assign}
+                  disabled={isEditingBlocked(s)}
+                />
+                <label className="search-field">
+                  <Search size={16} />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="搜索按键或功能…"
+                    aria-label="搜索按键功能"
+                  />
+                  {query && (
+                    <button onClick={() => setQuery('')} aria-label="清空搜索">
+                      <X size={14} />
+                    </button>
+                  )}
+                </label>
+                <div className="category-list" aria-label="功能分类">
+                  {categories
+                    .filter((c) => c === '全部' || actions.some((a) => a.category === c))
+                    .map((c) => (
+                      <button
+                        key={c}
+                        aria-pressed={category === c}
+                        className={category === c ? 'active' : ''}
+                        onClick={() => setCategory(c)}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                </div>
+                <div className="action-grid">
+                  {filtered.map((a) => (
+                    <button
+                      key={a.id}
+                      disabled={!selected || isEditingBlocked(s)}
+                      onClick={() => assign(a)}
+                      title={a.description}
+                      aria-label={`设为 ${a.description}`}
+                    >
+                      <span>{a.label}</span>
+                    </button>
+                  ))}
+                  {!filtered.length && (
+                    <div className="empty-search">
+                      <Search size={23} />
+                      <p>没有匹配的功能</p>
+                      <button
+                        onClick={() => {
+                          setQuery('');
+                          setCategory('全部');
+                        }}
+                      >
+                        清空筛选
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
       </aside>

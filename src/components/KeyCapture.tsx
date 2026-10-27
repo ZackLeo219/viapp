@@ -74,7 +74,7 @@ export function KeyCapture({
         modifier.current = code;
       } else if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
         rejected.current = true;
-        setMessage('这里只录入单个按键。');
+        setMessage('组合键请在「快捷键」中设置。');
       } else apply(code);
     } else if (isModifier(code)) {
       if (modifier.current === code && !rejected.current) apply(code);

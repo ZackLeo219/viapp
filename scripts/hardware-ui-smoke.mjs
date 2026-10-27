@@ -62,12 +62,26 @@ async function waitFor(expression) {
   );
 }
 async function click(selector) {
-  if (
-    !(await evaluate(
-      `(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e || e.disabled)return false;e.dispatchEvent(new MouseEvent('click',{bubbles:true}));return true})()`,
-    ))
-  )
-    throw new Error(`Cannot click ${selector}`);
+  await evaluate(
+    `Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`,
+  );
+  const point = await evaluate(
+    `(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e || e.disabled)return null;e.scrollIntoView({block:'center',behavior:'instant'});const r=e.getBoundingClientRect();return r.width && r.height ? {x:r.x+r.width/2,y:r.y+r.height/2} : null})()`,
+  );
+  if (!point) throw new Error(`Cannot click ${selector}`);
+  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+  await call('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    button: 'left',
+    clickCount: 1,
+    ...point,
+  });
+  await call('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    button: 'left',
+    clickCount: 1,
+    ...point,
+  });
 }
 try {
   let target;
@@ -157,6 +171,7 @@ try {
   );
   await waitFor("document.querySelector('.autosave-toggle input')?.checked === false");
   await click('[role="group"] [data-key-index="0"]');
+  await waitFor('!!document.querySelector(".category-list button")');
   await evaluate(
     '[...document.querySelectorAll(".category-list button")].find(b=>b.textContent.trim()==="字母数字").click()',
   );
@@ -168,6 +183,18 @@ try {
   await waitFor('document.querySelector("h1")?.textContent === "TOFU PAD"');
   if (await evaluate('document.querySelector(".save-state")?.textContent.includes("1 个按键")'))
     throw new Error('Neo draft leaked into TOFU session.');
+  await click('[role="group"] [data-key-index="0"]');
+  await waitFor('!!document.querySelector(".binding-tabs")');
+  if (!(await evaluate('document.querySelector(".binding-tabs")?.textContent.includes("双功能")')))
+    throw new Error('Firmware-supported dual-role controls are missing.');
+  await evaluate(
+    '[...document.querySelectorAll("nav button")].find(b=>b.textContent.trim()==="设备设置").click()',
+  );
+  await waitFor('document.querySelectorAll(".settings-layer").length === 2');
+  if (
+    !(await evaluate('document.querySelector(".settings-counter")?.textContent.trim()==="2 / 8"'))
+  )
+    throw new Error('The original TOFU PAD layer capacity was not exposed.');
   await click('[aria-label="返回设备中心"]');
   await waitFor('document.querySelectorAll(".connected-card").length > 0');
   await click('[aria-label="Neo75 Cu 开始配置"]');
@@ -211,6 +238,7 @@ try {
         returnedToCleanState: true,
         independentCardDisconnect: true,
         hardwareWrites: 0,
+        tofuCapabilities: true,
         browserErrors: errors,
       },
       null,
@@ -222,6 +250,11 @@ try {
   );
 } catch (error) {
   console.error(error);
+  if (ws?.readyState === WebSocket.OPEN) {
+    const screenshot = await call('Page.captureScreenshot', { format: 'png' }).catch(() => null);
+    if (screenshot)
+      await writeFile(join(output, 'ui-failure.png'), Buffer.from(screenshot.data, 'base64'));
+  }
   process.exitCode = 1;
 } finally {
   if (ws?.readyState === WebSocket.OPEN) {

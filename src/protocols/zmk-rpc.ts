@@ -79,7 +79,10 @@ export class ZmkRpc {
   call(request: Omit<Request, 'requestId'>): Promise<RequestResponse> {
     const task = this.chain.then(() => {
       if (this.closed) throw new Error('设备连接已经关闭，请重新连接。');
-      const requestId = this.nextId++;
+      // Only one request is in flight. Keep IDs in one protobuf byte for the
+      // original firmware's small request buffer; timeout always closes the session.
+      const requestId = this.nextId;
+      this.nextId = (this.nextId % 127) + 1;
       return new Promise<RequestResponse>((resolve, reject) => {
         const timer = setTimeout(
           () => this.fail('ZMK 响应超时。请确认 USB 连接和输出模式，然后重连。'),
@@ -130,7 +133,14 @@ export async function serialTransport(port: SerialPort): Promise<ByteTransport> 
     let closing: Promise<void> | undefined;
     return {
       read: port.readable,
-      write: (data) => writer.write(data),
+      // Pace writes for firmware with small CDC receive buffers.
+      write: async (data) => {
+        for (let offset = 0; offset < data.length; offset += 8) {
+          if (closing) throw new Error('USB 串口已关闭。');
+          if (offset) await new Promise((resolve) => setTimeout(resolve, 5));
+          await writer.write(data.subarray(offset, offset + 8));
+        }
+      },
       close: () =>
         (closing ??= (async () => {
           await writer.close().catch(() => undefined);

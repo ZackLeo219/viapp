@@ -3,7 +3,12 @@ import { test, expect, type Page } from '@playwright/test';
 declare global {
   interface Window {
     __transitionFrame: { ready: boolean; animations: Animation[]; transition: ViewTransition };
-    __keyboardFixture: { unplug(): void; plug(): void };
+    __keyboardFixture: {
+      unplug(): void;
+      plug(): void;
+      setMatrix(indices: number[]): void;
+      matrixReads: number;
+    };
   }
 }
 
@@ -178,6 +183,7 @@ for (const mode of ['native', 'reduced', 'unsupported'] as const) {
 async function mockConnectedKeyboard(page: Page, initiallyAuthorized = true) {
   await page.addInitScript((initiallyAuthorized) => {
     let plugged = true;
+    let matrix: number[] = [];
     let authorized = initiallyAuthorized || sessionStorage.getItem('fixture-hid-grant') === '1';
     class KeyboardFixture extends EventTarget {
       vendorId = 0x36b0;
@@ -196,7 +202,15 @@ async function mockConnectedKeyboard(page: Page, initiallyAuthorized = true) {
       }
       async sendReport(_id: number, data: Uint8Array) {
         const response = new Uint8Array(data);
-        if (data[0] === 1) response.set([0, 12], 1);
+        if (data[0] === 2 && data[1] === 3) {
+          window.__keyboardFixture.matrixReads++;
+          for (const index of matrix) {
+            const row = Math.floor(index / 16),
+              bit = 1 << index % 16;
+            response[3 + row * 2] |= bit >> 8;
+            response[4 + row * 2] |= bit & 255;
+          }
+        } else if (data[0] === 1) response.set([0, 12], 1);
         else if (data[0] === 0x11) response[1] = 1;
         else if (![2, 0x12, 0x0c, 0x0d].includes(data[0])) throw new Error('Unexpected write');
         this.dispatchEvent(
@@ -222,6 +236,10 @@ async function mockConnectedKeyboard(page: Page, initiallyAuthorized = true) {
       },
     });
     window.__keyboardFixture = {
+      matrixReads: 0,
+      setMatrix(indices) {
+        matrix = indices;
+      },
       unplug() {
         plugged = false;
         hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: keyboard }));
@@ -369,8 +387,7 @@ test('TOFU uses its own behavior model and does not offer unsupported macro crea
 }) => {
   await demo(page, 'TOFU PAD');
   await expect(page.getByRole('group', { name: 'TOFU PAD 基础层可视化键盘' })).toBeVisible();
-  await page.getByRole('button', { name: '宏编辑器', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '当前固件不支持编辑宏' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '宏编辑器', exact: true })).toHaveCount(0);
 });
 test('visual keyboard tracks presses, releases and distinct left/right keys', async ({ page }) => {
   await demo(page);
@@ -1070,3 +1087,172 @@ test('keyboard navigation, layer changes and page changes do not accidentally re
   await expect(page.locator('.inspector-key')).toHaveText('Space');
   await expect(capture).toHaveCount(0);
 });
+
+for (const model of ['Neo75 Cu', 'TOFU PAD']) {
+  test(`${model} builds, records and saves shortcuts`, async ({ page }) => {
+    await demo(page, model, true);
+    const key = page.locator('[data-key-index="1"]');
+    await key.click();
+    await page.getByRole('button', { name: '快捷键', exact: true }).click();
+    await page
+      .getByRole('group', { name: '修饰键' })
+      .getByRole('button', { name: 'Ctrl', exact: true })
+      .click();
+    await page.getByRole('combobox', { name: '目标按键', exact: true }).selectOption('6');
+    await expect(page.locator('.binding-preview')).toHaveText('Ctrl+C');
+    await page.getByRole('button', { name: '应用到按键', exact: true }).click();
+    await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+    await expect(key).toHaveAccessibleName(/^Ctrl\+C，/);
+    await page.getByRole('button', { name: '录入快捷键', exact: true }).click();
+    await page.keyboard.press('Control+Shift+v');
+    await expect(page.locator('.binding-preview')).toHaveText('Ctrl+Shift+V');
+    await page.getByRole('button', { name: '应用到按键', exact: true }).click();
+    await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+    await page.getByRole('button', { name: '重新读取设备', exact: true }).click();
+    await expect(key).toHaveAccessibleName(/^Ctrl\+Shift\+V，/);
+  });
+}
+test('TOFU exposes firmware dual-role and mouse actions', async ({ page }) => {
+  await demo(page, 'TOFU PAD', true);
+  const key = page.locator('[data-key-index="1"]');
+  await key.click();
+  await page.getByRole('button', { name: '双功能', exact: true }).click();
+  await page.getByRole('combobox', { name: '轻点', exact: true }).selectOption('4');
+  await page.getByRole('combobox', { name: '长按', exact: true }).selectOption('1');
+  await page.getByRole('button', { name: '应用到按键', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(key).toHaveAccessibleName(/^A \/ 层 1，/);
+  await page.getByRole('combobox', { name: '双功能行为', exact: true }).selectOption('12');
+  await page.getByRole('button', { name: '应用到按键', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(key).toHaveAccessibleName(/^A \/ Ctrl，/);
+  await page
+    .getByRole('group', { name: '改键类型' })
+    .getByRole('button', { name: '按键', exact: true })
+    .click();
+  await page.getByRole('button', { name: '鼠标', exact: true }).click();
+  await page.getByRole('button', { name: '设为 鼠标左键', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(key).toHaveAccessibleName(/^鼠标左键，/);
+});
+test('Neo physical layout saves and undo restores the previous installed layout', async ({
+  page,
+}) => {
+  await demo(page, 'Neo75 Cu', true);
+  await page.getByRole('button', { name: '设备设置', exact: true }).click();
+  const split = page
+    .getByRole('group', { name: '退格', exact: true })
+    .getByRole('button', { name: '分裂', exact: true });
+  await split.click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(split).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.layout-preview [data-key-index="30"]')).toHaveCount(1);
+  await page.getByRole('button', { name: '撤销修改', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(split).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.layout-preview [data-key-index="30"]')).toHaveCount(0);
+  await page
+    .getByRole('group', { name: '空格', exact: true })
+    .getByRole('button', { name: '7U', exact: true })
+    .click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await page.getByRole('button', { name: '按键设置', exact: true }).click();
+  await page.getByRole('button', { name: '重新读取设备', exact: true }).click();
+  await page.getByRole('button', { name: '设备设置', exact: true }).click();
+  await expect(
+    page
+      .getByRole('group', { name: '空格', exact: true })
+      .getByRole('button', { name: '7U', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+});
+test('TOFU layer editing handles capacity, reordering, references and bulk review', async ({
+  page,
+}) => {
+  await demo(page, 'TOFU PAD', true);
+  await page.getByRole('button', { name: '设备设置', exact: true }).click();
+  await expect(page.locator('.settings-layer input')).toHaveCount(0);
+  await page.getByRole('button', { name: '新增图层', exact: true }).click();
+  await expect(page.locator('.settings-layer[data-layer-id="2"]')).toBeVisible();
+  await page.getByRole('button', { name: '上移图层 2', exact: true }).click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(page.locator('.settings-layer').nth(1)).toHaveAttribute('data-layer-id', '2');
+  await page.getByRole('button', { name: '删除图层 1', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('仍有按键使用此层');
+  await page.getByRole('button', { name: '关闭提示', exact: true }).click();
+  await page.getByRole('button', { name: '复制图层 0', exact: true }).click();
+  await page.getByRole('combobox', { name: '复制到图层', exact: true }).selectOption('2');
+  await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
+  await expect(page.locator('.save-state')).toContainText('待确认保存');
+  await page.waitForTimeout(500);
+  await expect(page.locator('.save-state')).toContainText('待确认保存');
+  await page.getByRole('button', { name: '保存演示配置', exact: true }).click();
+  await page.getByTestId('confirm-save').click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await page.getByRole('button', { name: '删除图层 2', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
+  await page.getByRole('button', { name: '保存演示配置', exact: true }).click();
+  await page.getByTestId('confirm-save').click();
+  await expect(page.locator('.save-state')).toHaveText('演示配置已同步');
+  await expect(page.locator('.settings-layer[data-layer-id="2"]')).toHaveCount(0);
+});
+test('physical testing tracks right Shift and Fn by matrix position and stops on exit', async ({
+  page,
+}) => {
+  await mockConnectedKeyboard(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Neo75 Cu 开始配置', exact: true }).click();
+  await page.getByRole('button', { name: '按键测试', exact: true }).click();
+  await page.getByRole('button', { name: '物理按键', exact: true }).click();
+  await expect(page.locator('.matrix-tester .tester-stage')).toHaveClass(/listening/);
+  await page.evaluate(() => window.__keyboardFixture.setMatrix([77, 90]));
+  for (const index of [77, 90])
+    await expect(page.locator(`[data-matrix-index="${index}"]`)).toHaveAttribute(
+      'data-state',
+      'held',
+    );
+  await page.evaluate(() => window.__keyboardFixture.setMatrix([]));
+  await expect(page.locator('[data-matrix-index="77"]')).toHaveAttribute('data-state', 'tested');
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  const reads = await page.evaluate(() => window.__keyboardFixture.matrixReads);
+  await page.waitForTimeout(150);
+  expect(await page.evaluate(() => window.__keyboardFixture.matrixReads)).toBe(reads);
+  await page.getByRole('button', { name: '重置物理测试', exact: true }).click();
+  await expect(page.getByRole('progressbar', { name: '物理按键测试进度' })).toHaveAttribute(
+    'aria-valuenow',
+    '0',
+  );
+  await page.getByRole('button', { name: '继续', exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(page.locator('.matrix-tester .tester-stage')).not.toHaveClass(/listening/);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.locator('.matrix-tester .tester-stage')).toHaveClass(/listening/);
+  await page.getByRole('button', { name: '设备设置', exact: true }).click();
+  await page.waitForTimeout(100);
+  const stopped = await page.evaluate(() => window.__keyboardFixture.matrixReads);
+  await page.waitForTimeout(150);
+  expect(await page.evaluate(() => window.__keyboardFixture.matrixReads)).toBe(stopped);
+});
+for (const width of [320, 390, 1280])
+  test(`new configuration panels fit at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 960 });
+    for (const model of ['Neo75 Cu', 'TOFU PAD']) {
+      await demo(page, model, true);
+      await page.getByRole('button', { name: '设备设置', exact: true }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await page.getByRole('button', { name: '按键设置', exact: true }).click();
+      await page.locator('[data-key-index="1"]').click();
+      await page.getByRole('button', { name: '快捷键', exact: true }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      if (model === 'TOFU PAD') {
+        await page.getByRole('button', { name: '双功能', exact: true }).click();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+      }
+    }
+  });

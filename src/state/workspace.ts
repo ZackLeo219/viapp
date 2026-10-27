@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { previewSnapshot, DemoDriver } from '../domain/demo';
 import {
   clone,
+  layerName,
   assertCompatible,
   equalBinding,
   errorMessage,
@@ -17,8 +18,10 @@ import { ViaDriver } from '../protocols/via';
 import { ZmkDriver } from '../protocols/zmk';
 import { requestDeviceAccess, type DeviceAccess } from '../protocols/discovery';
 import { decodeMacro, type MacroStep } from '../domain/macros';
+import { neoLayout } from '../domain/layouts';
+import { normalizeEmptyBindings, referencedLayers } from '../domain/behaviors';
 
-type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test';
+type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test' | 'settings';
 interface DeviceSession {
   model: ModelId;
   baseline: DeviceSnapshot;
@@ -71,6 +74,12 @@ interface Workspace {
   setAutoSave(enabled: boolean): void;
   edit(index: number, binding: Binding): void;
   editMacro(index: number, bytes: number[]): void;
+  setLayout(options: number): void;
+  moveLayer(id: number, direction: -1 | 1): void;
+  removeLayer(id: number): void;
+  copyLayer(source: number, target: number): void;
+  addLayer(): Promise<void>;
+  resolveDeviceChanges(save: boolean): Promise<void>;
   stageMacro(index: number, steps: MacroStep[]): void;
   discardMacro(index: number): void;
   selectKey(index: number | null): void;
@@ -109,6 +118,31 @@ export const isAutoSavePending = (s: Workspace) =>
   isDirty(s);
 export const isWorkspaceBusy = (s: Workspace) => s.operation !== 'idle' || isAutoSavePending(s);
 export const isEditingBlocked = (s: Workspace) => s.operation !== 'idle' && !s.autoSaving;
+export async function readDeviceMatrix(): Promise<number[] | null> {
+  const s = useWorkspace.getState();
+  if (s.connection !== 'device' || s.page !== 'test' || s.operation !== 'idle') return null;
+  return drivers.get(s.model)?.readMatrix?.() ?? null;
+}
+function editSettings(change: (draft: DeviceSnapshot) => void, review = false) {
+  const s = useWorkspace.getState();
+  if (s.operation !== 'idle') return;
+  try {
+    const draft = clone(s.draft);
+    change(draft);
+    if (sameConfiguration(s.draft, draft)) return;
+    useWorkspace.setState({
+      draft,
+      history: [...s.history.slice(-99), clone(s.draft)],
+      future: [],
+      layerId: draft.layers.some((l) => l.id === s.layerId) ? s.layerId : draft.layers[0].id,
+      selectedIndex: null,
+      autoSaveRequested: !review,
+      requiresReview: s.requiresReview || review,
+    });
+  } catch (error) {
+    s.report(error);
+  }
+}
 function autoSavePreference() {
   try {
     return localStorage.getItem('viapp:auto-save') !== 'off';
@@ -474,6 +508,133 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       };
     });
   },
+  setLayout(options) {
+    editSettings((draft) => {
+      if (draft.protocol !== 'via' || !Number.isInteger(options) || options < 0 || options > 15)
+        throw new Error('配列选项无效。');
+      draft.layoutOptions = options;
+      draft.keys = neoLayout(options);
+    });
+  },
+  moveLayer(id, direction) {
+    editSettings((draft) => {
+      if (!draft.deviceInfo?.layerCapacity) throw new Error('当前固件不支持调整图层顺序。');
+      const index = draft.layers.findIndex((l) => l.id === id),
+        target = index + direction;
+      if (index <= 0 || target <= 0 || target >= draft.layers.length) return;
+      draft.layers.splice(target, 0, draft.layers.splice(index, 1)[0]);
+    });
+  },
+  removeLayer(id) {
+    editSettings((draft) => {
+      if (!draft.deviceInfo?.layerCapacity || id === draft.layers[0].id)
+        throw new Error('基础层不能删除。');
+      if (
+        draft.layers
+          .filter((l) => l.id !== id)
+          .some((l) => l.bindings.some((b) => referencedLayers(draft, b).includes(id)))
+      )
+        throw new Error('其他图层中仍有按键使用此层，请先修改这些按键。');
+      draft.layers = draft.layers.filter((l) => l.id !== id);
+    }, true);
+  },
+  copyLayer(source, target) {
+    editSettings((draft) => {
+      const from = draft.layers.find((l) => l.id === source),
+        to = draft.layers.find((l) => l.id === target);
+      if (from && to && source !== target) to.bindings = clone(from.bindings);
+    }, true);
+  },
+  async addLayer() {
+    const s = get(),
+      driver = drivers.get(s.model);
+    if (isWorkspaceBusy(s) || s.connection === 'offline' || !driver?.addLayer) return;
+    if (isDirty(s) || Object.keys(s.macroDrafts).length) {
+      s.report('请先保存或撤销当前修改。');
+      return;
+    }
+    set({ operation: 'saving', progress: '新增图层', error: null });
+    let committing = false;
+    let stagedByUs = false;
+    try {
+      const current = await driver.read();
+      if (current.locked || current.firmwareUnsaved || !sameConfiguration(s.baseline, current))
+        throw new Error('设备配置已变化，请重新读取。');
+      await saveProfile(`${current.name} · 新增图层前`, current, 'backup');
+      stagedByUs = true;
+      await driver.addLayer();
+      const staged = await driver.read();
+      const retained = {
+        ...staged,
+        layers: staged.layers.filter((l) => current.layers.some((c) => c.id === l.id)),
+      };
+      if (
+        staged.layers.length !== current.layers.length + 1 ||
+        !sameConfiguration(current, retained)
+      )
+        throw new Error('新增图层校验失败。');
+      committing = true;
+      await driver.commit();
+      const snapshot = await driver.read();
+      if (!sameConfiguration(staged, snapshot) || snapshot.firmwareUnsaved)
+        throw new Error('新增图层保存失败。');
+      const added = snapshot.layers.find((l) => !current.layers.some((c) => c.id === l.id))!;
+      set({
+        baseline: snapshot,
+        draft: clone(snapshot),
+        history: [],
+        future: [],
+        selectedIndex: null,
+        layerId: added.id,
+        notice: '已新增图层。',
+        autoSaveBlocked: false,
+      });
+    } catch (error) {
+      if (stagedByUs && !committing) await driver.discardChanges?.().catch(() => undefined);
+      get().report(error);
+    } finally {
+      set({ operation: 'idle', progress: '' });
+      rememberCurrent();
+    }
+  },
+  async resolveDeviceChanges(save) {
+    const s = get(),
+      driver = drivers.get(s.model);
+    if (!driver || s.draft.protocol !== 'zmk' || isWorkspaceBusy(s) || s.connection === 'offline')
+      return;
+    set({ operation: 'saving', progress: save ? '保存设备配置' : '撤销设备修改', error: null });
+    try {
+      const current = await driver.read();
+      if (current.locked) throw new Error('请先解锁键盘。');
+      await saveProfile(`${current.name} · 设备配置备份`, current, 'backup');
+      if (isDirty(s)) await saveProfile(`${s.draft.name} · 草稿备份`, s.draft, 'draft');
+      if (save) await driver.commit();
+      else {
+        if (!driver.discardChanges) throw new Error('当前固件不支持撤销。');
+        await driver.discardChanges();
+      }
+      const snapshot = await driver.read();
+      if (snapshot.firmwareUnsaved || (save && !sameConfiguration(current, snapshot)))
+        throw new Error('设备配置校验失败。');
+      set({
+        baseline: snapshot,
+        draft: clone(snapshot),
+        layerId: snapshot.layers[0].id,
+        selectedIndex: null,
+        history: [],
+        future: [],
+        autoSaveRequested: false,
+        requiresReview: false,
+        autoSaveBlocked: false,
+        notice: save ? '已保存到键盘。' : '已撤销设备修改。',
+      });
+    } catch (error) {
+      get().report(error);
+    } finally {
+      set({ operation: 'idle', progress: '' });
+      rememberCurrent();
+    }
+  },
   editMacro(index, bytes) {
     if (isEditingBlocked(get()) || index < 0 || index >= get().draft.macros.length) return;
     set((s) => {
@@ -511,6 +672,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   undo() {
     if (isEditingBlocked(get()) || !get().history.length) return;
     set((s) => ({
+      layerId: s.history.at(-1)!.layers.some((l) => l.id === s.layerId)
+        ? s.layerId
+        : s.history.at(-1)!.layers[0].id,
+      selectedIndex: null,
       draft: {
         ...s.history.at(-1)!,
         locked: s.baseline.locked,
@@ -524,6 +689,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   redo() {
     if (isEditingBlocked(get()) || !get().future.length) return;
     set((s) => ({
+      layerId: s.future[0].layers.some((l) => l.id === s.layerId)
+        ? s.layerId
+        : s.future[0].layers[0].id,
+      selectedIndex: null,
       draft: {
         ...s.future[0],
         locked: s.baseline.locked,
@@ -538,6 +707,10 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     if (get().operation !== 'idle') return;
     set((s) => ({
       draft: clone(s.baseline),
+      layerId: s.baseline.layers.some((l) => l.id === s.layerId)
+        ? s.layerId
+        : s.baseline.layers[0].id,
+      selectedIndex: null,
       history: s.requiresReview ? [] : [...s.history.slice(-99), clone(s.draft)],
       future: [],
       autoSaveRequested: false,
@@ -546,6 +719,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   },
   loadProfile(snapshot) {
     if (isWorkspaceBusy(get())) return;
+    snapshot = normalizeEmptyBindings(snapshot);
     rememberCurrent();
     const target = get().sessions[snapshot.model];
     if (target && target.connection !== 'offline') get().openDevice(snapshot.model);
@@ -573,7 +747,19 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     const current = get().draft;
     const imported = clone(snapshot);
     imported.identity = current.identity;
-    if (JSON.stringify(imported.keys) !== JSON.stringify(current.keys))
+    assertCompatible(current, imported, true);
+    imported.deviceInfo = clone(current.deviceInfo);
+    imported.behaviors = clone(current.behaviors);
+    for (const layer of imported.layers) {
+      const present = current.layers.find((l) => l.id === layer.id);
+      if (layer.storedName === undefined && present?.name === layer.name)
+        layer.storedName = present.storedName;
+      if (layer.storedName === '') layer.name = layerName(layer);
+    }
+    if (
+      imported.protocol !== 'via' &&
+      JSON.stringify(imported.keys) !== JSON.stringify(current.keys)
+    )
       throw new Error('配置的物理配列与当前设备不同，请使用匹配的备份。');
     sameConfiguration(current, imported); // validates model, protocol, layers and behavior identity.
     imported.locked = current.locked;
@@ -581,6 +767,8 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     const requiresReview = !sameConfiguration(get().baseline, imported);
     set((s) => ({
       draft: imported,
+      layerId: imported.layers.some((l) => l.id === s.layerId) ? s.layerId : imported.layers[0].id,
+      selectedIndex: null,
       history: requiresReview ? [...s.history.slice(-99), clone(s.draft)] : [],
       future: [],
       autoSaveRequested: false,

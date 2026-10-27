@@ -96,6 +96,18 @@ describe('ZMK RPC lifecycle', () => {
     await fake.rpc.close();
     vi.useRealTimers();
   });
+  it('keeps request identifiers compact without reusing an outstanding request', async () => {
+    const fake = fakeRpc();
+    for (let i = 0; i < 130; i++) {
+      const response = fake.rpc.call({ core: { getLockState: true } });
+      await Promise.resolve();
+      const id = fake.sent.at(-1)!.requestId;
+      expect(id).toBe((i % 127) + 1);
+      fake.reply({ requestResponse: { requestId: id, core: { getLockState: 1 } } });
+      expect((await response).core?.getLockState).toBe(1);
+    }
+    await fake.rpc.close();
+  });
   it('keeps separate devices independent', async () => {
     const a = fakeRpc(),
       b = fakeRpc();
@@ -122,6 +134,36 @@ describe('serial port ownership and errors', () => {
       writable: new WritableStream<Uint8Array>(),
     };
   }
+  it('paces long escaped frames to avoid overflowing the firmware RX ring', async () => {
+    vi.useFakeTimers();
+    try {
+      const port = fakePort(),
+        received: number[] = [];
+      const chunks: { bytes: number[]; at: number }[] = [];
+      port.writable = new WritableStream<Uint8Array>({
+        write(chunk) {
+          if (chunk.length > 8) throw new Error('RX overflow');
+          chunks.push({ bytes: Array.from(chunk), at: Date.now() });
+          received.push(...chunk);
+        },
+      });
+      const transport = await serialTransport(port as unknown as SerialPort);
+      const source = Uint8Array.from([0xab, ...Array(19).fill(0xac), 0xad]);
+      const data = encodeFrame(source),
+        writing = transport.write(data);
+      await vi.advanceTimersByTimeAsync(50);
+      await writing;
+      expect(received).toEqual(Array.from(data));
+      expect(chunks.length).toBeGreaterThan(1);
+      for (let i = 1; i < chunks.length; i++)
+        expect(chunks[i].at - chunks[i - 1].at).toBeGreaterThanOrEqual(5);
+      expect(new FrameDecoder().push(Uint8Array.from(received))).toEqual([source]);
+      await transport.close();
+      await expect(transport.write(Uint8Array.of(1))).rejects.toThrow('关闭');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('explains a failed open without closing a port it did not acquire', async () => {
     const port = fakePort();
     const cause = new DOMException(

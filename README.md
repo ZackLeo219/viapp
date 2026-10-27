@@ -1,6 +1,6 @@
 # VIAPP
 
-浏览器里的键盘配置工具，支持改键、宏编辑和按键测试。
+浏览器里的键盘配置工具，支持改键、快捷键、图层管理、宏编辑和按键测试。
 
 [打开网页驱动](https://zackleo219.github.io/viapp/) · [Windows 离线版](https://github.com/ZackLeo219/viapp/releases/latest/download/viapp-windows-x64.exe) · [其他下载](https://github.com/ZackLeo219/viapp/releases)
 
@@ -8,10 +8,10 @@
 
 ## 支持的键盘
 
-| 型号     | PCB          |
-| -------- | ------------ |
-| Neo75 Cu | 原装三模 PCB |
-| TOFU PAD | 原装双模 PCB |
+| 型号     | PCB          | 功能                                       |
+| -------- | ------------ | ------------------------------------------ |
+| Neo75 Cu | 原装三模 PCB | 改键、快捷键、宏、物理配列、按键测试       |
+| TOFU PAD | 原装双模 PCB | 改键、快捷键、双功能键、图层管理、按键测试 |
 
 使用电脑上的 **Chrome 或 Edge**，通过 USB 数据线或受支持的 2.4 GHz 接收器连接。目前已验证 USB 有线连接，接收器待验证；蓝牙不支持网页配置。TOFU PAD 暂不支持在线编辑宏。
 

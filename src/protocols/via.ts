@@ -238,6 +238,32 @@ export class ViaDriver implements Driver {
       throw new Error('宏写入校验失败，备份已保留。');
     await this.transport.exchange([0x0f, last >>> 8, last & 255, 1, 0], 5);
   }
+  async writeLayout(options: number) {
+    if (!this.latest || !Number.isInteger(options) || options < 0 || options > 15)
+      throw new Error('配列选项无效。');
+    await this.transport.exchange([3, 2, 0, 0, 0, options], 2);
+    const response = await this.transport.exchange([2, 2], 2);
+    if (new DataView(response.buffer, response.byteOffset).getUint32(2, false) !== options)
+      throw new Error('设备没有保留配列设置。');
+    this.latest = { ...this.latest, layoutOptions: options, keys: neoLayout(options) };
+  }
+  async readMatrix(): Promise<number[] | null> {
+    if (this.latest?.protocolVersion !== 12) return null;
+    let response: Uint8Array;
+    try {
+      response = await this.transport.exchange([2, 3, 0], 3);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('不支持这条')) return null;
+      throw error;
+    }
+    const held: number[] = [];
+    // Protocol 12 returns six big-endian 16-bit rows after the command, value ID and row offset.
+    for (let row = 0; row < 6; row++) {
+      const bits = response[3 + row * 2] * 256 + response[4 + row * 2];
+      for (let col = 0; col < 16; col++) if (bits & (1 << col)) held.push(row * 16 + col);
+    }
+    return held;
+  }
   async commit() {
     /* VIA persists each write in the device; no commit opcode exists. */
   }

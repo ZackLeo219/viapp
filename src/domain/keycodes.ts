@@ -1,5 +1,6 @@
 import type { Binding, DeviceSnapshot } from './types';
 import { hex } from './types';
+import { advancedKind, acceptsBinding } from './behaviors';
 
 export interface KeyAction {
   id: string;
@@ -16,7 +17,9 @@ export interface KeyAction {
     | '媒体'
     | '层'
     | '设备'
-    | '宏';
+    | '宏'
+    | '鼠标';
+  binding?: Binding;
   hid?: number;
   page?: number;
   special?: string;
@@ -163,6 +166,43 @@ export function actionsFor(snapshot: DeviceSnapshot): KeyAction[] {
       }),
     );
   } else {
+    for (const behavior of snapshot.behaviors) {
+      const kind = advancedKind(behavior);
+      const values =
+        kind === 'mouse'
+          ? [
+              { value: 1, label: '鼠标左键' },
+              { value: 2, label: '鼠标右键' },
+              { value: 4, label: '鼠标中键' },
+              { value: 8, label: '鼠标前进' },
+              { value: 16, label: '鼠标后退' },
+            ]
+          : kind === 'to-layer'
+            ? snapshot.layers.map((l) => ({ value: l.id, label: `切换到 ${l.name}` }))
+            : [];
+      for (const item of values) {
+        const binding: Binding = {
+          type: 'zmk',
+          behaviorId: behavior.id,
+          param1: item.value,
+          param2: 0,
+        };
+        if (
+          acceptsBinding(
+            behavior,
+            binding,
+            snapshot.layers.map((l) => l.id),
+          )
+        )
+          keys.push({
+            id: `parameter-${behavior.id}-${item.value}`,
+            label: item.label,
+            description: item.label,
+            category: kind === 'mouse' ? '鼠标' : '层',
+            binding,
+          });
+      }
+    }
     snapshot.behaviors
       .filter(
         (b) =>
@@ -183,6 +223,7 @@ export function actionsFor(snapshot: DeviceSnapshot): KeyAction[] {
   return keys;
 }
 export function bindingFor(action: KeyAction, snapshot: DeviceSnapshot): Binding | null {
+  if (action.binding) return structuredClone(action.binding);
   const special = action.special || '';
   if (snapshot.protocol === 'via') {
     let code = action.hid;
@@ -219,6 +260,15 @@ export function labelFor(binding: Binding, snapshot: DeviceSnapshot): string {
       return `MO(${binding.code - range.momentary})`;
     if (binding.code >= range.toggle && binding.code < range.toggle + 32)
       return `TG(${binding.code - range.toggle})`;
+    if (binding.code >= 0x100 && binding.code <= 0x1fff) {
+      const flags = binding.code >>> 8;
+      const labels =
+        flags & 16 ? ['R Ctrl', 'R Shift', 'R Alt', 'R Win'] : ['Ctrl', 'Shift', 'Alt', 'Win'];
+      const key =
+        KEY_ACTIONS.find((a) => a.hid === (binding.code & 255) && !a.page)?.label ??
+        hex(binding.code & 255);
+      return `${labels.filter((_, i) => flags & (1 << i)).join('+')}+${key}`;
+    }
     const media = Object.entries(mediaVia).find(([, v]) => v === binding.code);
     return (
       (media
@@ -231,6 +281,19 @@ export function labelFor(binding: Binding, snapshot: DeviceSnapshot): string {
   if (behavior?.kind === 'none' || binding.behaviorId === 0) return '禁用';
   if (behavior?.kind === 'momentary') return `MO(${binding.param1})`;
   if (behavior?.kind === 'toggle') return `TG(${binding.param1})`;
+  if (behavior && ['layer-tap', 'mod-tap'].includes(advancedKind(behavior) ?? '')) {
+    const label = (value: number) =>
+      KEY_ACTIONS.find((a) => a.hid === (value & 65535) && (a.page ?? 7) === ((value >>> 16) & 255))
+        ?.label ?? hex(value);
+    return `${label(binding.param2)} / ${advancedKind(behavior) === 'layer-tap' ? `层 ${binding.param1}` : label(binding.param1).replace('L ', '')}`;
+  }
+  if (behavior && advancedKind(behavior) === 'to-layer') return `TO(${binding.param1})`;
+  if (behavior && advancedKind(behavior) === 'mouse')
+    return (
+      { 1: '鼠标左键', 2: '鼠标右键', 4: '鼠标中键', 8: '鼠标前进', 16: '鼠标后退' }[
+        binding.param1
+      ] ?? '鼠标按键'
+    );
   if (behavior?.kind === 'key') {
     const action = KEY_ACTIONS.find(
       (a) =>
