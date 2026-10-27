@@ -47,6 +47,24 @@ afterEach(async () => {
 });
 
 describe('device center and independent sessions', () => {
+  it('never redirects a newly selected keyboard to a different connected unit of the same model', async () => {
+    mocks.neo.mockResolvedValue(new HardwareFixture('neo75cu'));
+    const first = {} as HIDDevice,
+      second = {} as HIDDevice;
+    expect(
+      await state().connect('neo75cu', false, {
+        access: { model: 'neo75cu', transport: 'hid', device: first },
+      }),
+    ).toBe(true);
+    expect(
+      await state().connect('neo75cu', false, {
+        access: { model: 'neo75cu', transport: 'hid', device: second },
+      }),
+    ).toBe(false);
+    expect(mocks.neo).toHaveBeenCalledTimes(1);
+    expect(state().error).toContain('同型号');
+    expect(state().sessions.neo75cu?.connection).toBe('device');
+  });
   it('keeps unapplied macro input across pages and devices without scheduling a write', async () => {
     await state().connect('neo75cu', true);
     state().setAutoSave(true);

@@ -18,7 +18,8 @@ import { ViaDriver } from '../protocols/via';
 import { ZmkDriver } from '../protocols/zmk';
 import { requestDeviceAccess, type DeviceAccess } from '../protocols/discovery';
 import { decodeMacro, type MacroStep } from '../domain/macros';
-import { neoLayout } from '../domain/layouts';
+import { snapshotLayout } from '../domain/via-definition';
+import { DefinitionRequired, importDefinition as storeDefinition } from '../devices/via-registry';
 import { normalizeEmptyBindings, referencedLayers } from '../domain/behaviors';
 
 type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test' | 'settings';
@@ -37,6 +38,20 @@ interface DeviceSession {
   autoSaveBlocked: boolean;
 }
 interface Workspace {
+  pendingDevices: Partial<
+    Record<
+      ModelId,
+      {
+        model: ModelId;
+        name: string;
+        message: string;
+        access: Extract<DeviceAccess, { transport: 'hid' }>;
+      }
+    >
+  >;
+  importDefinition(model: ModelId, contents: string): Promise<boolean>;
+  retryDefinition(model: ModelId): Promise<boolean>;
+  dismissPending(model: ModelId): void;
   autoSave: boolean;
   autoSaving: boolean;
   autoSaveRequested: boolean;
@@ -93,6 +108,7 @@ interface Workspace {
   notify(message: string): void;
 }
 const drivers = new Map<ModelId, Driver>();
+const connectedHandles = new Map<ModelId, object>();
 const initial = previewSnapshot('neo75cu');
 const log = (message: string, level: Diagnostic['level'] = 'info') =>
   useWorkspace.setState((s) => ({
@@ -105,6 +121,7 @@ export const hasUnsavedDrafts = (s: Workspace) =>
   Object.keys(s.macroDrafts).length > 0 ||
   Object.values(s.sessions).some(
     (session) =>
+      !!session &&
       session.model !== s.model &&
       (isDirty(session) || Object.keys(session.macroDrafts).length > 0),
   );
@@ -188,6 +205,36 @@ function rememberCurrent() {
   });
 }
 export const useWorkspace = create<Workspace>((set, get) => ({
+  pendingDevices: {},
+  async importDefinition(model, contents) {
+    const pending = get().pendingDevices[model];
+    if (!pending || isWorkspaceBusy(get())) return false;
+    try {
+      if (contents.length > 2_000_000) throw new Error('键盘定义不能超过 2 MB。');
+      let raw: unknown;
+      try {
+        raw = JSON.parse(contents);
+      } catch {
+        throw new Error('无法解析 JSON 键盘定义。');
+      }
+      storeDefinition(pending.access.device, raw);
+      return await get().connect(model, false, { access: pending.access });
+    } catch (error) {
+      get().report(error);
+      return false;
+    }
+  },
+  async retryDefinition(model) {
+    const pending = get().pendingDevices[model];
+    return pending ? get().connect(model, false, { access: pending.access }) : false;
+  },
+  dismissPending(model) {
+    set((s) => {
+      const pendingDevices = { ...s.pendingDevices };
+      delete pendingDevices[model];
+      return { pendingDevices, autoConnectBlocked: [...new Set([...s.autoConnectBlocked, model])] };
+    });
+  },
   autoSave: autoSavePreference(),
   autoSaving: false,
   autoSaveRequested: false,
@@ -257,6 +304,12 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     rememberCurrent();
     const previous = get().sessions[model];
     if (previous?.connection === (demo ? 'demo' : 'device')) {
+      const access = options.access;
+      const handle = access?.transport === 'hid' ? access.device : access?.port;
+      if (handle && connectedHandles.has(model) && connectedHandles.get(model) !== handle) {
+        get().report('已连接一台同型号设备，请先断开当前设备。');
+        return false;
+      }
       if (!options.automatic) get().openDevice(model);
       return true;
     }
@@ -278,19 +331,20 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         // Obtain permission in the click before awaiting teardown. An offline
         // driver's close may still be releasing its exclusive serial handle.
         if (!demo && !access)
-          access = await requestDeviceAccess(model === 'neo75cu' ? 'hid' : 'serial');
+          access = await requestDeviceAccess(model === 'tofu-pad' ? 'serial' : 'hid');
         await stale.close();
         drivers.delete(model);
       }
       // requestDevice/requestPort must run directly from the user's click, before any unrelated await.
       const opening = demo
         ? Promise.resolve(new DemoDriver(model))
-        : model === 'neo75cu'
+        : model !== 'tofu-pad'
           ? ViaDriver.connect(access?.transport === 'hid' ? access.device : undefined)
           : ZmkDriver.connect(access?.transport === 'serial' ? access.port : undefined);
       candidate = await opening;
       set({ progress: '读取原厂配置' });
       const snapshot = await candidate.read();
+      if (snapshot.model !== model) throw new Error('连接的键盘型号已改变，请重新添加设备。');
       let session: DeviceSession = {
         model,
         baseline: snapshot,
@@ -336,6 +390,9 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       }
       await drivers.get(model)?.close();
       drivers.set(model, candidate);
+      const handle = access?.transport === 'hid' ? access.device : access?.port;
+      if (handle) connectedHandles.set(model, handle);
+      else connectedHandles.delete(model);
       const active = candidate;
       active.onDisconnect = (reason) => {
         if (drivers.get(model) !== active) return;
@@ -367,6 +424,9 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       };
       set((s) => ({
         ...(!options.automatic || s.model === model ? session : {}),
+        pendingDevices: Object.fromEntries(
+          Object.entries(s.pendingDevices).filter(([key]) => key !== model),
+        ),
         sessions: { ...s.sessions, [model]: session },
         autoConnectBlocked: s.autoConnectBlocked.filter((m) => m !== model),
         ...(!options.automatic
@@ -380,7 +440,20 @@ export const useWorkspace = create<Workspace>((set, get) => ({
       return true;
     } catch (e) {
       await candidate?.close();
-      if (e instanceof DOMException && ['NotFoundError', 'AbortError'].includes(e.name))
+      if (e instanceof DefinitionRequired && options.access?.transport === 'hid') {
+        const access = options.access;
+        set((s) => ({
+          pendingDevices: {
+            ...s.pendingDevices,
+            [model]: {
+              model,
+              name: access.device.productName || 'VIA 键盘',
+              message: e.message,
+              access,
+            },
+          },
+        }));
+      } else if (e instanceof DOMException && ['NotFoundError', 'AbortError'].includes(e.name))
         set({ notice: '已取消连接，可以随时重试。' });
       else get().report(e);
       return false;
@@ -395,6 +468,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     try {
       await drivers.get(model)?.close();
       drivers.delete(model);
+      connectedHandles.delete(model);
       set((s) => ({
         ...(s.model === model ? { connection: 'offline' as const } : {}),
         sessions: s.sessions[model]
@@ -510,10 +584,15 @@ export const useWorkspace = create<Workspace>((set, get) => ({
   },
   setLayout(options) {
     editSettings((draft) => {
-      if (draft.protocol !== 'via' || !Number.isInteger(options) || options < 0 || options > 15)
+      if (
+        draft.protocol !== 'via' ||
+        !Number.isInteger(options) ||
+        options < 0 ||
+        options > 0xffffffff
+      )
         throw new Error('配列选项无效。');
       draft.layoutOptions = options;
-      draft.keys = neoLayout(options);
+      draft.keys = snapshotLayout(draft, options);
     });
   },
   moveLayer(id, direction) {

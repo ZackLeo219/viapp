@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { readDeviceMatrix, useWorkspace } from '../state/workspace';
 import { labelFor } from '../domain/keycodes';
+import { layoutBounds } from '../domain/layouts';
 
 export function MatrixTester({ suspended }: { suspended: boolean }) {
   const snapshot = useWorkspace((s) => s.baseline);
@@ -15,10 +16,7 @@ export function MatrixTester({ suspended }: { suspended: boolean }) {
   const escapeAt = useRef(0);
   const resume = useRef(false);
   const keys = snapshot.keys;
-  const minX = Math.min(...keys.map((k) => k.x)),
-    minY = Math.min(...keys.map((k) => k.y));
-  const width = Math.max(...keys.map((k) => k.x + k.w)) - minX;
-  const height = Math.max(...keys.map((k) => k.y + k.h)) - minY;
+  const { minX, minY, width, height } = layoutBounds(keys);
   const tested = keys.filter((k) => counts[k.index]).length;
   const start = () => {
     setError('');
@@ -204,7 +202,7 @@ export function MatrixTester({ suspended }: { suspended: boolean }) {
                   className={`tester-key ${status}`}
                   data-matrix-index={k.index}
                   data-state={status}
-                  transform={`translate(${(k.x - minX) * 50 + 8},${(k.y - minY) * 50 + 8})`}
+                  transform={`${k.rotation ? `rotate(${k.rotation} ${((k.rx ?? k.x) - minX) * 50 + 8} ${((k.ry ?? k.y) - minY) * 50 + 8}) ` : ''}translate(${(k.x - minX) * 50 + 8},${(k.y - minY) * 50 + 8})`}
                 >
                   <title>
                     {label} · {counts[k.index] ?? 0} 次

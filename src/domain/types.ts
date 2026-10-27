@@ -1,6 +1,6 @@
 import type { BehaviorBindingParametersSet } from '@zmkfirmware/zmk-studio-ts-client/behaviors';
-import { neoLayout } from './layouts';
-export type ModelId = 'neo75cu' | 'tofu-pad';
+import { snapshotLayout, type ViaDefinition } from './via-definition';
+export type ModelId = 'neo75cu' | 'neo65cu' | 'tofu-pad' | `via-${string}-${string}`;
 export type Binding =
   | { type: 'via'; code: number }
   | { type: 'zmk'; behaviorId: number; param1: number; param2: number };
@@ -55,6 +55,7 @@ export interface DeviceSnapshot {
   capturedAt: string;
   firmwareUnsaved: boolean;
   deviceInfo?: DeviceInfo;
+  viaDefinition?: ViaDefinition;
 }
 export interface Change {
   layerId: number;
@@ -82,7 +83,11 @@ export interface Driver {
   onDisconnect?: (reason: string) => void;
   onLockChange?: (locked: boolean) => void;
 }
-export const MODEL_NAMES: Record<ModelId, string> = { neo75cu: 'Neo75 Cu', 'tofu-pad': 'TOFU PAD' };
+export const MODEL_NAMES: Partial<Record<ModelId, string>> = {
+  neo75cu: 'Neo75 Cu',
+  neo65cu: 'Neo65 Cu',
+  'tofu-pad': 'TOFU PAD',
+};
 export const equalBinding = (a: Binding, b: Binding): boolean =>
   a.type === b.type &&
   (a.type === 'via' && b.type === 'via'
@@ -110,6 +115,7 @@ export function assertCompatible(a: DeviceSnapshot, b: DeviceSnapshot, editing =
     a.protocol !== b.protocol ||
     a.protocolVersion !== b.protocolVersion ||
     a.identity !== b.identity ||
+    JSON.stringify(a.viaDefinition) !== JSON.stringify(b.viaDefinition) ||
     ((!editing || a.protocol !== 'via') && a.layoutOptions !== b.layoutOptions) ||
     a.macroBufferSize !== b.macroBufferSize ||
     a.macros.length !== b.macros.length ||
@@ -135,9 +141,9 @@ export function assertCompatible(a: DeviceSnapshot, b: DeviceSnapshot, editing =
   if (editing && a.protocol === 'via' && a.layoutOptions !== b.layoutOptions) {
     if (
       b.layoutOptions < 0 ||
-      b.layoutOptions > 15 ||
+      b.layoutOptions > 0xffffffff ||
       !Number.isInteger(b.layoutOptions) ||
-      JSON.stringify(b.keys) !== JSON.stringify(neoLayout(b.layoutOptions))
+      JSON.stringify(b.keys) !== JSON.stringify(snapshotLayout(a, b.layoutOptions))
     )
       throw new Error('配列不符合原厂定义。');
   } else if (JSON.stringify(a.keys) !== JSON.stringify(b.keys))

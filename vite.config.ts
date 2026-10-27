@@ -27,6 +27,17 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,woff2,txt}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: /\/definitions\/[0-9a-f]{2}\.json(?:\?|$)/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'viapp-definitions',
+              expiration: { maxEntries: 64 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
     }),
   ],

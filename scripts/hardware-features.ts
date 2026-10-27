@@ -2,7 +2,7 @@
 import { applyConfiguration, sameConfiguration } from '../src/domain/apply';
 import { clone, type DeviceSnapshot, type Driver } from '../src/domain/types';
 import { acceptsBinding, advancedKind, shortcutBinding } from '../src/domain/behaviors';
-import { neoLayout } from '../src/domain/layouts';
+import { snapshotLayout } from '../src/domain/via-definition';
 
 export async function verifyFeatures(driver: Driver, original: DeviceSnapshot) {
   const checks: string[] = [];
@@ -27,10 +27,12 @@ export async function verifyFeatures(driver: Driver, original: DeviceSnapshot) {
     if (current.protocol === 'via') {
       const desired = clone(current);
       desired.layoutOptions ^= 15;
-      desired.keys = neoLayout(desired.layoutOptions);
-      const index = Array.from({ length: 96 }, (_, i) => i).find(
-        (i) => !original.keys.some((k) => k.index === i),
-      )!;
+      desired.keys = snapshotLayout(desired, desired.layoutOptions);
+      const index = Array.from({ length: desired.layers[0].bindings.length }, (_, i) => i).find(
+        (i) =>
+          !original.keys.some((k) => k.index === i) && !desired.keys.some((k) => k.index === i),
+      );
+      if (index === undefined) throw new Error('No unused matrix position available for testing');
       desired.layers.at(-1)!.bindings[index] = shortcutBinding(desired, 6, 3)!;
       current = await applyConfiguration(driver, current, desired, keepBackup);
       checks.push('layout-write-readback', 'shortcut-write-readback');

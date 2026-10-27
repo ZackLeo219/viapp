@@ -1,22 +1,19 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowRight, Calculator, ChevronDown, Keyboard, LoaderCircle, Plus } from 'lucide-react';
-import { MODEL_NAMES } from '../domain/types';
 import './DeviceConnect.css';
 
 const connections = [
   {
     transport: 'hid',
     protocol: 'VIA',
-    model: MODEL_NAMES.neo75cu,
-    pcb: '原装三模 PCB',
+    description: '自动识别键盘，也可导入 VIA JSON',
     icon: Keyboard,
   },
   {
     transport: 'serial',
     protocol: 'ZMK Studio',
-    model: MODEL_NAMES['tofu-pad'],
-    pcb: '原装双模 PCB',
+    description: 'TOFU PAD 原装双模 PCB',
     icon: Calculator,
   },
 ] as const;
@@ -79,7 +76,6 @@ export function DeviceConnect({
         >
           <DropdownMenu.Label className="connection-menu-heading">
             <span id={`${descriptionId}-title`}>选择连接方式</span>
-            <span>当前支持型号</span>
           </DropdownMenu.Label>
           {connections.map((connection) => (
             <DropdownMenu.Item
@@ -97,7 +93,7 @@ export function DeviceConnect({
               <span className="connection-menu-copy">
                 <strong>{connection.protocol}</strong>
                 <small id={`${descriptionId}-${connection.transport}`}>
-                  {connection.model} · {connection.pcb}
+                  {connection.description}
                 </small>
               </span>
               <ArrowRight className="connection-menu-arrow" size={16} />

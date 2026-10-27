@@ -1,4 +1,11 @@
 import { clone, type DeviceSnapshot, type ModelId, type Binding } from './types';
+import {
+  validModel,
+  validateCompiledDefinition,
+  definitionLayout,
+  usbIdentity,
+  viaModel,
+} from './via-definition';
 export interface Profile {
   id: string;
   name: string;
@@ -63,8 +70,8 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
   if (!record(value)) return bad();
   const s = value;
   if (
-    !['neo75cu', 'tofu-pad'].includes(String(s.model)) ||
-    (s.model === 'neo75cu' ? s.protocol !== 'via' : s.protocol !== 'zmk') ||
+    !validModel(s.model) ||
+    (s.model === 'tofu-pad' ? s.protocol !== 'zmk' : s.protocol !== 'via') ||
     !text(s.name) ||
     !text(s.identity) ||
     !text(s.capturedAt) ||
@@ -90,7 +97,7 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
       (layer.storedName !== undefined && !text(layer.storedName, 80)) ||
       !Array.isArray(layer.bindings) ||
       layer.bindings.length < 1 ||
-      layer.bindings.length > 128 ||
+      layer.bindings.length > (s.protocol === 'via' ? 512 : 128) ||
       !layer.bindings.every((b) => validBinding(b, String(s.protocol)))
     )
       return bad();
@@ -101,7 +108,7 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
   if (
     !Array.isArray(s.keys) ||
     s.keys.length < 1 ||
-    s.keys.length > 128 ||
+    s.keys.length > 512 ||
     new Set(s.keys.map((k: unknown) => (record(k) ? k.id : null))).size !== s.keys.length ||
     new Set(s.keys.map((k: unknown) => (record(k) ? k.index : null))).size !== s.keys.length
   )
@@ -129,6 +136,17 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
     )
       return bad();
   }
+  if (s.protocol === 'via' && s.model !== 'neo75cu') {
+    const definition = validateCompiledDefinition(s.viaDefinition);
+    if (
+      size !== definition.matrix.rows * definition.matrix.cols ||
+      viaModel(definition.vendorId, definition.productId) !== s.model ||
+      usbIdentity(definition.vendorId, definition.productId) !== s.identity ||
+      JSON.stringify(definitionLayout(definition, s.layoutOptions as number)) !==
+        JSON.stringify(s.keys)
+    )
+      return bad();
+  } else if (s.viaDefinition !== undefined) return bad();
   if (
     !Array.isArray(s.behaviors) ||
     s.behaviors.length > 256 ||

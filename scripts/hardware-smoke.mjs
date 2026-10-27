@@ -93,7 +93,11 @@ try {
     } else if (data.method === 'DeviceAccess.deviceRequestPrompted') {
       const devices = data.params.devices;
       const device = devices.find((d) =>
-        selectedModel === 'neo75cu' ? /neo75/i.test(d.name) : /tofu|串行|serial|COM3/i.test(d.name),
+        selectedModel === 'neo75cu'
+          ? /neo ?75/i.test(d.name)
+          : selectedModel === 'neo65cu'
+            ? /neo ?65/i.test(d.name)
+            : /tofu|串行|serial|COM3/i.test(d.name),
       );
       console.log('Device chooser:', devices.map((d) => d.name).join(', '));
       if (device)
@@ -114,7 +118,9 @@ try {
     await pause(500);
   }
   const onlyModel = process.argv.find((a) => a.startsWith('--model='))?.split('=')[1];
-  for (const model of ['neo75cu', 'tofu-pad'].filter((m) => !onlyModel || onlyModel === m)) {
+  if (onlyModel && !['neo75cu', 'neo65cu', 'tofu-pad'].includes(onlyModel))
+    throw new Error('Unknown test model.');
+  for (const model of onlyModel ? [onlyModel] : ['neo75cu', 'tofu-pad']) {
     selectedModel = model;
     console.log(`Reading ${model} through browser USB API...`);
     console.log(
@@ -124,12 +130,12 @@ try {
       ),
     );
     await evaluate(
-      `import('${base}/src/protocols/${model === 'neo75cu' ? 'via' : 'zmk'}.ts').then(module=>{window.__hardwareModule=module})`,
+      `import('${base}/src/protocols/${model !== 'tofu-pad' ? 'via' : 'zmk'}.ts').then(module=>{window.__hardwareModule=module})`,
     );
     console.log('Adapter module loaded.');
     await call('Page.bringToFront');
     const reading = evaluate(
-      `(async()=>{ window.__hardwareDriver = await window.__hardwareModule.${model === 'neo75cu' ? 'ViaDriver' : 'ZmkDriver'}.connect(); window.__hardwareOriginal = await window.__hardwareDriver.read(); return window.__hardwareOriginal; })()`,
+      `(async()=>{ window.__hardwareDriver = await window.__hardwareModule.${model !== 'tofu-pad' ? 'ViaDriver' : 'ZmkDriver'}.connect(); window.__hardwareOriginal = await window.__hardwareDriver.read(); return window.__hardwareOriginal; })()`,
     );
     // Select only this test browser's native chooser through Windows accessibility.
     const chooser = promisify(execFile)(
@@ -154,6 +160,8 @@ try {
       .catch((e) => console.error('Chooser:', e.message));
     const initial = await reading;
     await chooser;
+    if (initial.model !== model)
+      throw new Error('Selected hardware does not match requested model.');
     await writeFile(join(output, `${model}-original.json`), JSON.stringify(initial, null, 2));
     if (model === 'tofu-pad')
       await writeFile(
@@ -184,7 +192,8 @@ try {
         const {equalBinding} = await import('/src/domain/types.ts');
         const driver = window.__hardwareDriver, original = window.__hardwareOriginal;
         const layer = original.layers.at(-1);
-        const index = original.protocol==='via' ? Array.from({length:96},(_,i)=>i).find(i=>!original.keys.some(k=>k.index===i)) : layer.bindings.length-1;
+        const index = original.protocol==='via' ? Array.from({length:layer.bindings.length},(_,i)=>i).find(i=>!original.keys.some(k=>k.index===i)) : layer.bindings.length-1;
+        if(index === undefined) throw new Error('No unused matrix position available for testing');
         const previous = structuredClone(layer.bindings[index]);
         const keyBehavior = original.behaviors.find(b=>b.kind==='key');
         const replacement = original.protocol==='via' ? {type:'via',code: previous.code===115 ? 114 : 115} : {type:'zmk',behaviorId:keyBehavior.id,param1:previous.param1===0x70004?0x70005:0x70004,param2:0};
@@ -198,7 +207,7 @@ try {
       report.push({ model, mode: 'write-and-restore', ...result });
       if (!result.writeVerified || !result.restored || result.failure)
         throw new Error(`${model} failed hardware write test`);
-      if (model === 'neo75cu' && process.argv.includes('--macros')) {
+      if (model !== 'tofu-pad' && process.argv.includes('--macros')) {
         const macros = await evaluate(`(async()=>{
           const {sameConfiguration} = await import('/src/domain/apply.ts');
           const driver=window.__hardwareDriver, original=window.__hardwareOriginal;

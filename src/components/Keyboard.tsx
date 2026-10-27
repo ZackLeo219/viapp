@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { layoutBounds } from '../domain/layouts';
 import type { DeviceSnapshot } from '../domain/types';
 import { equalBinding } from '../domain/types';
 import { labelFor } from '../domain/keycodes';
@@ -43,11 +44,8 @@ export function Keyboard({
   const original = baseline?.layers.find((l) => l.id === layer.id);
   const keys = snapshot.keys;
   const bounds = useMemo(() => {
-    const minX = Math.min(...keys.map((k) => k.x)),
-      minY = Math.min(...keys.map((k) => k.y));
-    const maxX = Math.max(...keys.map((k) => k.x + k.w)),
-      maxY = Math.max(...keys.map((k) => k.y + k.h));
-    return { minX, minY, width: (maxX - minX) * 52 + 34, height: (maxY - minY) * 52 + 44 };
+    const bounds = layoutBounds(keys);
+    return { ...bounds, width: bounds.width * 52 + 34, height: bounds.height * 52 + 44 };
   }, [keys]);
   return (
     <svg
@@ -72,7 +70,7 @@ export function Keyboard({
         width={bounds.width - 2}
         height={bounds.height - 7}
         rx="13"
-        fill={snapshot.model === 'neo75cu' ? '#b5937b' : '#a6ada7'}
+        fill={snapshot.model.startsWith('neo') ? '#b5937b' : '#a6ada7'}
       />
       <rect
         x="1"
@@ -80,8 +78,8 @@ export function Keyboard({
         width={bounds.width - 2}
         height={bounds.height - 12}
         rx="13"
-        fill={snapshot.model === 'neo75cu' ? '#ded4c5' : '#dfe3da'}
-        stroke={snapshot.model === 'neo75cu' ? '#c4b49e' : '#bec7ba'}
+        fill={snapshot.model.startsWith('neo') ? '#ded4c5' : '#dfe3da'}
+        stroke={snapshot.model.startsWith('neo') ? '#c4b49e' : '#bec7ba'}
       />
       <rect
         x="11"
@@ -192,7 +190,11 @@ export function Keyboard({
           fontSize="7"
           letterSpacing="3"
         >
-          {snapshot.model === 'neo75cu' ? 'NEO / CU' : 'TOFU / PAD'}
+          {snapshot.model.startsWith('neo')
+            ? 'NEO / CU'
+            : snapshot.model === 'tofu-pad'
+              ? 'TOFU / PAD'
+              : 'VIAPP'}
         </text>
       )}
     </svg>

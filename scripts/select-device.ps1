@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
-$targetPattern = if ($Model -eq 'neo75cu') { 'NEO75' } else { 'Tofu|COM3' }
+$targetPattern = if ($Model -eq 'neo75cu') { 'NEO ?75' } elseif ($Model -eq 'neo65cu') { 'NEO ?65' } else { 'Tofu|COM3' }
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
   $process = Get-Process -Id $BrowserPid -ErrorAction SilentlyContinue
   if (-not $process -or $process.MainWindowHandle -eq 0) {

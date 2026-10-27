@@ -1,0 +1,5 @@
+VIA keyboard definition data (GPL-3.0).
+Copyright the VIA keyboard definition contributors.
+Source: https://github.com/the-via/keyboards/tree/9e3e9f4aa9f50f9439fdebc747560f51aaf109a0
+
+VIAPP extracts identity, matrix, layout and custom-key data and groups it into USB-ID shards. Menus are represented only by a capability flag. This is data; no VIA application source is included. Reproduce with scripts/sync-via-catalog.mjs and the above revision. See LICENSE.txt for redistribution terms.

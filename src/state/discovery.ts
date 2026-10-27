@@ -63,13 +63,24 @@ export function watchDevices(): () => void {
   const unsubscribe = useWorkspace.subscribe((state, previous) => {
     if (!isWorkspaceBusy(state) && isWorkspaceBusy(previous) && pending) schedule();
   });
+  const onDisconnect = (event: HIDConnectionEvent) => {
+    const access = identifyHid(event.device);
+    if (!access) return;
+    useWorkspace.setState((s) => {
+      const pendingDevices = { ...s.pendingDevices };
+      delete pendingDevices[access.model];
+      return { pendingDevices };
+    });
+  };
   navigator.hid?.addEventListener('connect', onConnect);
+  navigator.hid?.addEventListener('disconnect', onDisconnect);
   navigator.serial?.addEventListener('connect', onConnect);
   schedule();
   return () => {
     stopped = true;
     unsubscribe();
     navigator.hid?.removeEventListener('connect', onConnect);
+    navigator.hid?.removeEventListener('disconnect', onDisconnect);
     navigator.serial?.removeEventListener('connect', onConnect);
   };
 }

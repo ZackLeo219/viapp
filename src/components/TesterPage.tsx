@@ -18,7 +18,10 @@ const unknownLocks: Locks = { CapsLock: null, NumLock: null, ScrollLock: null };
 const unit = 50;
 export function TesterPage({ suspended = false }: { suspended?: boolean }) {
   const canReadMatrix = useWorkspace(
-    (s) => s.model === 'neo75cu' && s.connection === 'device' && s.baseline.protocolVersion === 12,
+    (s) =>
+      s.baseline.protocol === 'via' &&
+      s.connection === 'device' &&
+      s.baseline.protocolVersion >= 12,
   );
   const [physical, setPhysical] = useState(false);
   return (

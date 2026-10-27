@@ -1,5 +1,30 @@
 import type { PhysicalKey } from './types';
 
+export function layoutBounds(keys: PhysicalKey[]) {
+  const points = keys.flatMap((k) => {
+    const angle = ((k.rotation ?? 0) * Math.PI) / 180;
+    const cx = k.rx ?? k.x,
+      cy = k.ry ?? k.y;
+    return [
+      [k.x, k.y],
+      [k.x + k.w, k.y],
+      [k.x, k.y + k.h],
+      [k.x + k.w, k.y + k.h],
+    ].map(([x, y]) => [
+      cx + (x - cx) * Math.cos(angle) - (y - cy) * Math.sin(angle),
+      cy + (x - cx) * Math.sin(angle) + (y - cy) * Math.cos(angle),
+    ]);
+  });
+  const minX = Math.min(...points.map((p) => p[0])),
+    minY = Math.min(...points.map((p) => p[1]));
+  return {
+    minX,
+    minY,
+    width: Math.max(...points.map((p) => p[0])) - minX,
+    height: Math.max(...points.map((p) => p[1])) - minY,
+  };
+}
+
 // Matrix addresses transcribed from Qwertykeys' original tri-mode NEO75 definition.
 // Source and board identity are documented in THIRD_PARTY_NOTICES.md.
 export function neoLayout(options = 0): PhysicalKey[] {

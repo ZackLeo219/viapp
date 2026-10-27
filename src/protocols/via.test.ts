@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ViaDriver, ViaTransport, decodeMacroBuffer, encodeMacroBuffer } from './via';
+import { parseViaDefinition } from '../domain/via-definition';
 
-function fakeHid() {
+function fakeHid(rows = 6, cols = 16, version = 12, held = [64, 77]) {
   let listener: ((event: HIDInputReportEvent) => void) | undefined;
-  const keymap = new Uint8Array(2 * 96 * 2);
+  const keymap = new Uint8Array(2 * rows * cols * 2);
   keymap[0] = 0x52;
   keymap[1] = 0x21;
   const macros = new Uint8Array(128);
@@ -28,11 +29,17 @@ function fakeHid() {
       if (b[0] === 2 && b[1] === 2) r[5] = layout;
       else if (b[0] === 3 && b[1] === 2) layout = b[5];
       else if (b[0] === 2 && b[1] === 3) {
-        r[11] = 0x20;
-        r[12] = 1;
+        const width = Math.ceil(cols / 8),
+          count = Math.floor(28 / width);
+        for (const index of held) {
+          const row = Math.floor(index / cols),
+            col = index % cols;
+          if (row >= b[2] && row < b[2] + count)
+            r[3 + (row - b[2]) * width + width - 1 - Math.floor(col / 8)] |= 1 << col % 8;
+        }
       } else if (b[0] === 1) {
         r[1] = 0;
-        r[2] = 12;
+        r[2] = version;
       } else if (b[0] === 0x11) r[1] = 2;
       else if (b[0] === 0x0c) r[1] = 2;
       else if (b[0] === 0x0d) {
@@ -43,9 +50,9 @@ function fakeHid() {
         const offset = b[1] * 256 + b[2];
         r.set(buffer.slice(offset, offset + b[3]), 4);
       } else if (b[0] === 0x0f) macros.set(b.slice(4, 4 + b[3]), b[1] * 256 + b[2]);
-      else if (b[0] === 5) keymap.set(b.slice(4, 6), ((b[1] * 6 + b[2]) * 16 + b[3]) * 2);
+      else if (b[0] === 5) keymap.set(b.slice(4, 6), ((b[1] * rows + b[2]) * cols + b[3]) * 2);
       else if (b[0] === 4) {
-        const offset = ((b[1] * 6 + b[2]) * 16 + b[3]) * 2;
+        const offset = ((b[1] * rows + b[2]) * cols + b[3]) * 2;
         r.set(keymap.slice(offset, offset + 2), 4);
       }
       queueMicrotask(() =>
@@ -56,6 +63,51 @@ function fakeHid() {
   return { device: device as unknown as HIDDevice, requests, keymap, macros };
 }
 describe('VIA stock adapter', () => {
+  it('reads and writes non-Neo matrix dimensions using the matched definition', async () => {
+    const definition = parseViaDefinition({
+      name: 'Test Pad',
+      vendorId: '0x1234',
+      productId: '0x5678',
+      matrix: { rows: 3, cols: 5 },
+      layouts: {
+        keymap: [
+          ['0,0', '0,1'],
+          ['2,3', '2,4'],
+        ],
+      },
+    });
+    const fake = fakeHid(3, 5, 13, [0, 14]),
+      driver = new ViaDriver(new ViaTransport(fake.device), undefined, definition);
+    const snapshot = await driver.read();
+    expect(snapshot.model).toBe('via-1234-5678');
+    expect(snapshot.layers[0].bindings).toHaveLength(15);
+    expect(snapshot.keys.map((k) => k.index)).toEqual([0, 1, 13, 14]);
+    await driver.writeBinding(1, 14, { type: 'via', code: 0xe5 });
+    expect(fake.requests.at(-1)?.slice(0, 4)).toEqual([4, 1, 2, 4]);
+    expect(fake.keymap.slice(-2)).toEqual(Uint8Array.from([0, 0xe5]));
+    expect(await driver.readMatrix()).toEqual([0, 14]);
+    const count = fake.requests.length;
+    await expect(driver.writeBinding(0, 15, { type: 'via', code: 4 })).rejects.toThrow();
+    expect(fake.requests).toHaveLength(count);
+    await driver.close();
+  });
+  it('pages physical matrix reads for large boards without truncating the high column bit', async () => {
+    const definition = parseViaDefinition({
+      name: 'Wide Matrix',
+      vendorId: '0x1234',
+      productId: '0x5679',
+      matrix: { rows: 16, cols: 32 },
+      layouts: { keymap: [['0,0', '15,31']] },
+    });
+    const fake = fakeHid(16, 32, 12, [0, 31, 256, 511]),
+      driver = new ViaDriver(new ViaTransport(fake.device), undefined, definition);
+    await driver.read();
+    expect(await driver.readMatrix()).toEqual([0, 31, 256, 511]);
+    expect(fake.requests.filter((r) => r[0] === 2 && r[1] === 3).map((r) => r[2])).toEqual([
+      0, 7, 14,
+    ]);
+    await driver.close();
+  });
   it('reads big-endian matrix buffers across chunk boundaries and verifies a write', async () => {
     const fake = fakeHid(),
       driver = new ViaDriver(new ViaTransport(fake.device));

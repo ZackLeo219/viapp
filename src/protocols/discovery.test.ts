@@ -16,7 +16,13 @@ describe('permission-based device discovery', () => {
     expect(
       identifyHid({ ...hid, collections: [{ usagePage: 1, usage: 6 }] } as HIDDevice),
     ).toBeNull();
-    expect(identifyHid({ ...hid, productId: 1 } as unknown as HIDDevice)).toBeNull();
+    expect(identifyHid({ ...hid, productId: 1 } as unknown as HIDDevice)?.model).toBe(
+      'via-36b0-0001',
+    );
+    expect(identifyHid({ ...hid, productId: 0x3060 } as unknown as HIDDevice)?.model).toBe(
+      'neo65cu',
+    );
+    expect(identifyHid({ ...hid, productId: 0x3002 } as unknown as HIDDevice)).toBeNull();
     expect(
       identifySerial({ getInfo: () => ({ usbVendorId: 1, usbProductId: 2 }) } as SerialPort),
     ).toBeNull();

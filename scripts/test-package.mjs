@@ -49,6 +49,10 @@ try {
   const entry = html.match(/src="([^"]+\.js)"/)[1];
   assert.equal((await fetch(new URL(entry, url))).status, 200);
   assert.equal((await fetch(new URL('licenses.txt', url))).status, 200);
+  const catalog = await fetch(new URL('definitions/07.json', url));
+  assert.equal(catalog.status, 200);
+  assert.equal((await catalog.json())['5946:0001'].v3[0].definition.name, 'Claw44');
+  assert.equal((await fetch(new URL('definitions/LICENSE.txt', url))).status, 200);
   assert.equal((await fetch(url, { method: 'POST' })).status, 405);
   const second = spawn(resolve(root, 'release', binary), launchArgs, {
     stdio: 'ignore',
@@ -61,7 +65,9 @@ try {
     }),
     0,
   );
-  console.log(`PASS ${binary}: embedded webpage and licenses, duplicate launch, HTTP methods.`);
+  console.log(
+    `PASS ${binary}: embedded webpage, keyboard definitions and licenses, duplicate launch, HTTP methods.`,
+  );
 } finally {
   if (!exited) child.kill();
   await exit;

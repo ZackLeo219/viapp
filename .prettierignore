@@ -10,3 +10,5 @@ scripts/launcher/site
 pnpm-lock.yaml
 public/licenses.txt
 third_party/licenses
+
+public/definitions

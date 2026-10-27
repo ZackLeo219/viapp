@@ -128,6 +128,9 @@ const customNames = [
   '6KRO / NKRO',
   '指示灯开关',
 ];
+const customKeys = (snapshot: DeviceSnapshot) =>
+  snapshot.viaDefinition?.customKeycodes ??
+  (snapshot.model === 'neo75cu' ? customNames.map((name) => ({ name, title: name })) : []);
 const behaviorLabel = (name: string) =>
   ({ Device_USB: '切换 USB', Device_BT1: '蓝牙 1', Device_BT2: '蓝牙 2', Device_BT3: '蓝牙 3' })[
     name
@@ -147,15 +150,24 @@ export function actionsFor(snapshot: DeviceSnapshot): KeyAction[] {
     }
   }
   if (snapshot.protocol === 'via') {
-    customNames.forEach((label, index) =>
+    if (snapshot.protocolVersion >= 12)
+      keys.push({
+        id: 'grave-escape',
+        label: 'Esc / `',
+        description: 'Esc 与反引号复用',
+        category: '功能',
+        binding: { type: 'via', code: 0x7c16 },
+      });
+    customKeys(snapshot).forEach(({ name: label, title }, index) => {
+      if (!label || /reset|clear|bootloader|erase|ee_clr/i.test(`${label} ${title}`)) return;
       keys.push({
         id: `custom-${index}`,
         label,
-        description: `原厂功能：${label}`,
+        description: title,
         category: '设备',
         special: `custom:${index}`,
-      }),
-    );
+      });
+    });
     snapshot.macros.forEach((_, index) =>
       keys.push({
         id: `macro-${index}`,
@@ -249,11 +261,13 @@ export function bindingFor(action: KeyAction, snapshot: DeviceSnapshot): Binding
 }
 export function labelFor(binding: Binding, snapshot: DeviceSnapshot): string {
   if (binding.type === 'via') {
+    if (snapshot.protocolVersion >= 12 && binding.code === 0x7c16) return 'Esc / `';
     if (binding.code === 0) return '禁用';
     if (binding.code === 1) return '▽';
     const range = viaRanges(snapshot.protocolVersion);
-    if (binding.code >= range.custom && binding.code < range.custom + customNames.length)
-      return customNames[binding.code - range.custom];
+    const custom = customKeys(snapshot);
+    if (binding.code >= range.custom && binding.code < range.custom + custom.length)
+      return custom[binding.code - range.custom].name || hex(binding.code);
     if (binding.code >= range.macro && binding.code < range.macro + snapshot.macros.length)
       return `M${binding.code - range.macro}`;
     if (binding.code >= range.momentary && binding.code < range.momentary + 32)

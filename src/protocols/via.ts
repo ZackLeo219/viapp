@@ -1,5 +1,18 @@
-import type { Binding, DeviceSnapshot, Driver } from '../domain/types';
+import type { Binding, DeviceSnapshot, Driver, ModelId } from '../domain/types';
 import { neoLayout } from '../domain/layouts';
+import {
+  definitionLayout,
+  snapshotLayout,
+  usbIdentity,
+  viaModel,
+  type ViaDefinition,
+} from '../domain/via-definition';
+import {
+  hasViaInterface,
+  neo75Definition,
+  resolveDefinition,
+  viaFilters,
+} from '../devices/via-registry';
 
 export const NEO_USB = { vendorId: 0x36b0, productId: 0x3021, usagePage: 0xff60, usage: 0x61 };
 export class ViaTransport {
@@ -105,13 +118,15 @@ export function encodeMacroBuffer(macros: number[][], capacity: number): Uint8Ar
 }
 
 export class ViaDriver implements Driver {
-  readonly model = 'neo75cu' as const;
+  readonly model: ModelId;
   onDisconnect?: (reason: string) => void;
   private latest?: DeviceSnapshot;
   constructor(
     readonly transport: ViaTransport,
     private device?: HIDDevice,
+    readonly definition: ViaDefinition = neo75Definition,
   ) {
+    this.model = viaModel(definition.vendorId, definition.productId);
     transport.onDisconnect = (reason) => this.onDisconnect?.(reason);
     if (typeof navigator !== 'undefined' && navigator.hid)
       navigator.hid.addEventListener('disconnect', this.handleDisconnect);
@@ -119,18 +134,26 @@ export class ViaDriver implements Driver {
   static async connect(authorized?: HIDDevice): Promise<ViaDriver> {
     if (!window.isSecureContext || !navigator.hid)
       throw new Error('请使用桌面 Chrome / Edge，通过 HTTPS 或 localhost 打开网页。');
-    const device = authorized ?? (await navigator.hid.requestDevice({ filters: [NEO_USB] }))[0];
+    const device =
+      authorized ??
+      (await navigator.hid.requestDevice({ filters: viaFilters })).find(hasViaInterface);
     if (!device) throw new DOMException('已取消选择设备。', 'NotFoundError');
-    if (device.vendorId !== NEO_USB.vendorId || device.productId !== NEO_USB.productId)
-      throw new Error('当前只支持 Neo75 Cu 原装三模 PCB。');
-    if (
-      !device.collections.some(
-        (c) => c.usagePage === NEO_USB.usagePage && c.usage === NEO_USB.usage,
-      )
-    )
-      throw new Error('设备未开放 VIA 配置接口，请使用 USB 有线模式。');
+    if (!hasViaInterface(device)) throw new Error('设备未开放 VIA 配置接口，请使用 USB 有线模式。');
+    if (device.vendorId === 0x36b0 && device.productId === 0x3002)
+      throw new Error('请通过USB数据线连接。');
     await device.open();
-    return new ViaDriver(new ViaTransport(device), device);
+    const transport = new ViaTransport(device);
+    try {
+      const response = await transport.exchange([1]);
+      const version = response[1] * 256 + response[2];
+      if (![9, 10, 11, 12, 13].includes(version))
+        throw new Error(`暂不支持 VIA 协议 ${version}，未进行写入。`);
+      const definition = await resolveDefinition(device, version);
+      return new ViaDriver(transport, device, definition);
+    } catch (error) {
+      await transport.close();
+      throw error;
+    }
   }
   private handleDisconnect = (event: HIDConnectionEvent) => {
     if (event.device === this.device) this.transport.disconnected();
@@ -150,21 +173,22 @@ export class ViaDriver implements Driver {
   async read(): Promise<DeviceSnapshot> {
     const proto = await this.transport.exchange([1]);
     const version = proto[1] * 256 + proto[2];
-    if (![9, 10, 11, 12].includes(version))
+    if (![9, 10, 11, 12, 13].includes(version))
       throw new Error(`暂不支持 VIA 协议 ${version}，未进行写入。`);
     const count = (await this.transport.exchange([0x11]))[1];
-    if (count < 1 || count > 16) throw new Error('设备报告的层数量无效。');
+    if (count < 1 || count > 32) throw new Error('设备报告的层数量无效。');
     const layout = await this.transport.exchange([2, 2], 2);
     const layoutOptions = new DataView(layout.buffer).getUint32(2, false);
-    const raw = await this.buffer(0x12, count * 96 * 2);
+    const size = this.definition.matrix.rows * this.definition.matrix.cols;
+    const raw = await this.buffer(0x12, count * size * 2);
     const layers = Array.from({ length: count }, (_, id) => ({
       id,
       name: id === 0 ? '基础层' : `功能层 ${id}`,
       bindings: Array.from(
-        { length: 96 },
+        { length: size },
         (_, index): Binding => ({
           type: 'via',
-          code: raw[(id * 96 + index) * 2] * 256 + raw[(id * 96 + index) * 2 + 1],
+          code: raw[(id * size + index) * 2] * 256 + raw[(id * size + index) * 2 + 1],
         }),
       ),
     }));
@@ -182,12 +206,15 @@ export class ViaDriver implements Driver {
       throw new Error('设备宏缓冲区处于未完成写入状态，请先在原厂工具恢复宏配置。');
     const snapshot: DeviceSnapshot = {
       model: this.model,
-      name: 'Neo75 Cu',
-      identity: '36B0:3021',
+      name: this.definition.name,
+      identity: usbIdentity(this.definition.vendorId, this.definition.productId),
       protocol: 'via',
       protocolVersion: version,
       layers,
-      keys: neoLayout(layoutOptions),
+      keys:
+        this.model === 'neo75cu'
+          ? neoLayout(layoutOptions)
+          : definitionLayout(this.definition, layoutOptions),
       layoutOptions,
       behaviors: [],
       macros: decodeMacroBuffer(macroBuffer, macroCount),
@@ -195,6 +222,7 @@ export class ViaDriver implements Driver {
       locked: false,
       firmwareUnsaved: false,
       capturedAt: new Date().toISOString(),
+      ...(this.model === 'neo75cu' ? {} : { viaDefinition: structuredClone(this.definition) }),
     };
     this.latest = snapshot;
     return snapshot;
@@ -205,25 +233,27 @@ export class ViaDriver implements Driver {
       binding.type !== 'via' ||
       !this.latest.layers.some((l) => l.id === layerId) ||
       index < 0 ||
-      index >= 96 ||
+      index >= this.definition.matrix.rows * this.definition.matrix.cols ||
       !Number.isInteger(index) ||
       !Number.isInteger(binding.code) ||
       binding.code < 0 ||
       binding.code > 65535
     )
       throw new Error('无效的按键配置。');
+    const cols = this.definition.matrix.cols;
     await this.transport.exchange(
-      [5, layerId, Math.floor(index / 16), index % 16, binding.code >>> 8, binding.code & 255],
+      [5, layerId, Math.floor(index / cols), index % cols, binding.code >>> 8, binding.code & 255],
       6,
     );
     const check = await this.transport.exchange(
-      [4, layerId, Math.floor(index / 16), index % 16],
+      [4, layerId, Math.floor(index / cols), index % cols],
       4,
     );
     if (check[4] * 256 + check[5] !== binding.code)
       throw new Error('设备没有保留刚写入的按键。请检查备份并重新读取。');
   }
   async writeMacros(macros: number[][]) {
+    if (!macros.length) throw new Error('当前设备没有可编辑的宏槽位。');
     if (!this.latest || macros.length !== this.latest.macros.length)
       throw new Error('宏数量与设备不符。');
     const buffer = encodeMacroBuffer(macros, this.latest.macroBufferSize);
@@ -239,28 +269,38 @@ export class ViaDriver implements Driver {
     await this.transport.exchange([0x0f, last >>> 8, last & 255, 1, 0], 5);
   }
   async writeLayout(options: number) {
-    if (!this.latest || !Number.isInteger(options) || options < 0 || options > 15)
+    if (!this.latest || !Number.isInteger(options) || options < 0 || options > 0xffffffff)
       throw new Error('配列选项无效。');
-    await this.transport.exchange([3, 2, 0, 0, 0, options], 2);
+    const keys = snapshotLayout(this.latest, options);
+    await this.transport.exchange(
+      [3, 2, options >>> 24, (options >>> 16) & 255, (options >>> 8) & 255, options & 255],
+      2,
+    );
     const response = await this.transport.exchange([2, 2], 2);
     if (new DataView(response.buffer, response.byteOffset).getUint32(2, false) !== options)
       throw new Error('设备没有保留配列设置。');
-    this.latest = { ...this.latest, layoutOptions: options, keys: neoLayout(options) };
+    this.latest = { ...this.latest, layoutOptions: options, keys };
   }
   async readMatrix(): Promise<number[] | null> {
-    if (this.latest?.protocolVersion !== 12) return null;
-    let response: Uint8Array;
-    try {
-      response = await this.transport.exchange([2, 3, 0], 3);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('不支持这条')) return null;
-      throw error;
-    }
+    if (!this.latest || this.latest.protocolVersion < 12) return null;
     const held: number[] = [];
-    // Protocol 12 returns six big-endian 16-bit rows after the command, value ID and row offset.
-    for (let row = 0; row < 6; row++) {
-      const bits = response[3 + row * 2] * 256 + response[4 + row * 2];
-      for (let col = 0; col < 16; col++) if (bits & (1 << col)) held.push(row * 16 + col);
+    const { rows, cols } = this.definition.matrix;
+    const bytesPerRow = Math.ceil(cols / 8),
+      rowsPerPacket = Math.floor(28 / bytesPerRow);
+    for (let offset = 0; offset < rows; offset += rowsPerPacket) {
+      let response: Uint8Array;
+      try {
+        response = await this.transport.exchange([2, 3, offset], 3);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('不支持这条')) return null;
+        throw error;
+      }
+      for (let row = offset; row < Math.min(rows, offset + rowsPerPacket); row++) {
+        let bits = 0;
+        for (let byte = 0; byte < bytesPerRow; byte++)
+          bits = bits * 256 + response[3 + (row - offset) * bytesPerRow + byte];
+        for (let col = 0; col < cols; col++) if ((bits >>> col) & 1) held.push(row * cols + col);
+      }
     }
     return held;
   }

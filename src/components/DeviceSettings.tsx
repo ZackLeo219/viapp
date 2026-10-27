@@ -13,6 +13,7 @@ import {
 import { useWorkspace, isDirty, isWorkspaceBusy } from '../state/workspace';
 import { Keyboard } from './Keyboard';
 import { Modal } from './Modal';
+import { snapshotOptions, optionValues, setOption } from '../domain/via-definition';
 import './DeviceSettings.css';
 
 export function DeviceSettings() {
@@ -27,6 +28,8 @@ export function DeviceSettings() {
   const info = s.baseline.deviceInfo;
   const capacity = info?.layerCapacity ?? s.draft.layers.length;
   const macroUsed = s.draft.macros.reduce((n, m) => n + m.length + 1, 0);
+  const layoutOptions = snapshotOptions(s.draft);
+  const choices = optionValues(layoutOptions, s.draft.layoutOptions);
   return (
     <div className="settings-grid">
       <div className="settings-main">
@@ -115,7 +118,7 @@ export function DeviceSettings() {
             </div>
           )}
         </section>
-        {s.draft.protocol === 'via' && (
+        {s.draft.protocol === 'via' && layoutOptions.length > 0 && (
           <section className="panel settings-section">
             <div className="panel-heading">
               <div>
@@ -127,26 +130,17 @@ export function DeviceSettings() {
               </div>
             </div>
             <div className="layout-options">
-              {[
-                { mask: 8, label: '退格', options: ['标准', '分裂'] },
-                { mask: 4, label: '回车', options: ['ANSI', 'ISO'] },
-                { mask: 2, label: '左 Shift', options: ['标准', '分裂'] },
-                { mask: 1, label: '空格', options: ['6.25U', '7U'] },
-              ].map((item) => (
-                <div className="layout-option" key={item.mask}>
+              {layoutOptions.map((item, group) => (
+                <div className="layout-option" key={group}>
                   <span>{item.label}</span>
                   <div className="setting-segments" role="group" aria-label={item.label}>
-                    {item.options.map((option, index) => (
+                    {item.choices.map((option, index) => (
                       <button
                         key={option}
-                        aria-pressed={Number(!!(s.draft.layoutOptions & item.mask)) === index}
+                        aria-pressed={choices[group] === index}
                         disabled={blocked}
                         onClick={() =>
-                          s.setLayout(
-                            index
-                              ? s.draft.layoutOptions | item.mask
-                              : s.draft.layoutOptions & ~item.mask,
-                          )
+                          s.setLayout(setOption(layoutOptions, s.draft.layoutOptions, group, index))
                         }
                       >
                         {option}
@@ -258,6 +252,9 @@ export function DeviceSettings() {
             </div>
           </dl>
         </details>
+        {s.draft.viaDefinition?.extraFeatures && (
+          <p className="device-feature-note">灯效与旋钮暂请使用原厂工具。</p>
+        )}
       </aside>
       <Modal
         open={copy !== null}

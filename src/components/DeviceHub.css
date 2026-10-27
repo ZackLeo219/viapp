@@ -124,6 +124,8 @@
 }
 .connected-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: min(400px, 100%);
   border: 1px solid #dfe4d6;
   border-radius: 17px;
@@ -133,7 +135,9 @@
   box-shadow: 0 8px 25px #34451e04;
 }
 .connected-card-open {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   width: 100%;
   text-align: inherit;
   border-radius: inherit;
@@ -164,7 +168,9 @@
   box-shadow: 0 12px 35px #34451e0c;
 }
 .connected-visual {
+  width: 100%;
   height: 275px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -183,6 +189,8 @@
 }
 .connected-card-bottom {
   display: flex;
+  flex: 1;
+  width: 100%;
   align-items: center;
   justify-content: space-between;
   background: #e6ebdd;
@@ -194,6 +202,29 @@
   font-weight: 550;
   letter-spacing: -0.6px;
   color: #34442b;
+  overflow-wrap: anywhere;
+}
+.definition-visual {
+  flex-direction: column;
+  gap: 18px;
+  color: #59654e;
+}
+.definition-visual span {
+  font-size: 12px;
+}
+.definition-card .connected-card-bottom {
+  min-height: 174px;
+}
+.definition-card h2 {
+  font-size: 22px;
+}
+.definition-card p {
+  line-height: 1.7;
+}
+.definition-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
 }
 .connected-card p {
   display: flex;

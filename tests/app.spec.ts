@@ -620,7 +620,7 @@ test('the connection menu opens only the chosen native picker without a model se
   const menu = page.getByRole('menu', { name: '选择连接方式', exact: true });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitem')).toHaveCount(2);
-  await expect(menu).toContainText('Neo75 Cu');
+  await expect(menu).toContainText('自动识别键盘');
   await expect(menu).toContainText('TOFU PAD');
   await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
   await expect(page.locator('html')).not.toHaveAttribute('data-serial-requests', '1');
@@ -816,7 +816,8 @@ test('home keeps device settings private to the workspace and help lists support
   await expect(page.getByRole('button', { name: '配置管理', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '连接诊断', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '连接帮助', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '目前支持的型号' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '已验证的型号' })).toBeVisible();
+  await expect(page.locator('.help-models')).toContainText('Neo65 Cu');
   await expect(page.locator('.help-models')).toContainText('Neo75 Cu');
   await expect(page.locator('.help-models')).toContainText('TOFU PAD');
   await expect(page.getByRole('heading', { name: 'Neo75 Cu', exact: true })).toHaveCount(0);

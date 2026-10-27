@@ -64,6 +64,10 @@ if (missing.length) throw new Error(`Missing upstream license texts:\n${missing.
 const output = [
   'VIAPP\n' + (await readFile(join(root, 'LICENSE'), 'utf8')),
   'Third-party notices\nGenerated from the installed, locked dependency graph.\nSome additional Workbox notices are included conservatively.',
+  'VIA keyboard definition data\n' +
+    (await readFile(join(root, 'public/definitions/SOURCE.txt'), 'utf8')) +
+    '\n' +
+    (await readFile(join(root, 'public/definitions/LICENSE.txt'), 'utf8')),
   ...[...packages.values()].sort(),
 ].join('\n\n' + '='.repeat(72) + '\n\n');
 await writeFile(

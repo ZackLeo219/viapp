@@ -9,6 +9,7 @@ import {
 } from './types';
 
 export function previewSnapshot(model: ModelId): DeviceSnapshot {
+  if (model !== 'neo75cu' && model !== 'tofu-pad') throw new Error('此型号暂未提供演示。');
   const neo = model === 'neo75cu';
   const keys = neo ? neoLayout() : tofuPreviewLayout();
   const none: Binding = neo

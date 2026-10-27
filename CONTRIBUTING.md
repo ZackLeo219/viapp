@@ -8,7 +8,7 @@ Contributions are welcome. Please include the original PCB revision, firmware in
 
 通过 [设备适配申请](https://github.com/ZackLeo219/viapp/issues/new?template=device-support.yml) 提供型号、PCB 版本、官方资料和配置方式。
 
-当前已验证 Neo75 Cu 原装三模 PCB、TOFU PAD 原装双模 PCB 的 USB 配置。Neo65 Cu、Neo80 Cu 待适配。蓝牙配置和第三方 PCB 不在当前支持范围内。
+当前已验证 Neo65 Cu、Neo75 Cu 原装三模 PCB和 TOFU PAD 原装双模 PCB 的 USB 配置。Neo80 Cu 尚未真机验证。蓝牙配置和第三方 PCB 不在当前验证范围内。
 
 同品牌、同系列或标注支持 VIA，均不能替代协议和配列验证。一个型号的不同 PCB 可能需要不同适配器。
 
@@ -33,8 +33,9 @@ pnpm test:package     # 检查当前系统的离线包
 ## 新增设备
 
 - 收集原装 PCB 版本、固件版本、USB VID/PID、可用配置接口、官方配列或 JSON。不要上传序列号、个人键位备份或私人宏内容。
-- 在 `src/domain/types.ts` 登记型号，在 `src/domain/` 定义配列、功能及演示数据。
-- 在 `src/protocols/discovery.ts` 登记设备识别。检查具体接口，避免识别为其他 HID 或串口设备。接收器的 VID/PID 可能跨型号共用，新增无线适配时需验证实际连接的键盘型号。
+- 标准 VIA 设备无需逐一新增型号代码：通用适配器读取矩阵、配列选项和厂商按键定义。优先提交或修正定义；本地也可直接导入厂商 JSON。
+- 内置定义库来自固定版本的 `the-via/keyboards`。更新时在它的 checkout 上运行 `node scripts/sync-via-catalog.mjs /path/to/keyboards`，检查数据变化并保留 GPL 数据许可。VIAPP 的应用代码使用 MIT。
+- 特殊协议在 `src/protocols/discovery.ts` 登记识别。检查具体接口，避免误识别；共享 USB 编号的不同 PCB 不能随意选择一份定义。
 - 复用经过验证的协议适配器，或在 `src/protocols/` 新增适配器。遵循 `Driver` 接口，处理超时、断开、锁定、提交和读回校验。
 - 在工作台中接入连接逻辑，并更新帮助中的支持列表、README 和测试。
 - 为协议边界、参数校验和配置恢复添加测试。UI 不展示固件无法实现的功能。
@@ -45,7 +46,7 @@ pnpm test:package     # 检查当前系统的离线包
 
 测试还应覆盖：首次授权、刷新后自动连接、断线与重连、跨设备草稿隔离、保存失败时保留备份。没有真机验证的适配可以先提交草稿 PR，并明确未验证项目；正式支持列表只列已验证的型号和模式。
 
-现有脚本针对目前的两款设备，新增设备时需要扩展。在项目目录运行 `node scripts/hardware-server.mjs`，然后用 Windows Node.js 执行：
+在项目目录运行 `node scripts/hardware-server.mjs`，然后用 Windows Node.js 执行。默认检查 Neo75 Cu 和 TOFU PAD；单独测试 Neo65 Cu 时添加 `--model=neo65cu`：
 
 ```sh
 node --experimental-websocket scripts/hardware-smoke.mjs                 # 只读

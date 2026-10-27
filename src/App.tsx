@@ -542,13 +542,17 @@ export default function App() {
           <p>同一浏览器保留授权后，打开网页或再次插入设备会自动识别。</p>
           <h3>无法连接</h3>
           <p>
-            授权列表为空时，核对菜单中的支持型号与连接模式。确认线缆支持数据传输，并关闭其他配置页面。设备提示锁定时，请按原厂说明解锁。Linux
+            授权列表为空时，确认已切换到有线模式、线缆支持数据传输，并关闭其他配置页面。设备提示锁定时，请按原厂说明解锁。Linux
             可能需要设置 USB 或串口访问权限。
           </p>
-          <h3>目前支持的型号</h3>
+          <h3>已验证的型号</h3>
           <ul className="help-models">
             <li>
               <strong>{MODEL_NAMES.neo75cu}</strong>
+              <span>原装三模 PCB</span>
+            </li>
+            <li>
+              <strong>{MODEL_NAMES.neo65cu}</strong>
               <span>原装三模 PCB</span>
             </li>
             <li>
@@ -556,6 +560,7 @@ export default function App() {
               <span>原装双模 PCB</span>
             </li>
           </ul>
+          <p>其他 VIA 键盘会自动匹配定义，缺少时可导入厂商 VIA JSON。</p>
           <p>当前支持 USB 有线配置，暂不支持 2.4 GHz 和蓝牙配置。</p>
           <div className="help-links">
             <a href="https://github.com/ZackLeo219/viapp#使用" target="_blank" rel="noreferrer">
@@ -583,11 +588,16 @@ export default function App() {
 function DeviceHub({ onDemo }: { onDemo(): void }) {
   const s = useWorkspace();
   const busy = isWorkspaceBusy(s);
-  const devices = Object.values(s.sessions).filter((session) => session.connection === 'device');
+  const devices = Object.values(s.sessions).filter(
+    (session): session is NonNullable<typeof session> =>
+      !!session && session.connection === 'device',
+  );
+  const pending = Object.values(s.pendingDevices).filter((device) => !!device);
+  const hasDevices = devices.length + pending.length > 0;
   return (
-    <div className={`device-hub ${devices.length ? 'has-devices' : 'empty-hub'}`}>
+    <div className={`device-hub ${hasDevices ? 'has-devices' : 'empty-hub'}`}>
       <div className="hub-devices-stage">
-        {devices.length ? (
+        {hasDevices ? (
           <div className="connected-devices">
             {devices.map((session) => (
               <article className="connected-card" key={session.model}>
@@ -630,6 +640,9 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
                 </button>
               </article>
             ))}
+            {pending.map((device) => (
+              <DefinitionCard key={device.model} device={device} />
+            ))}
           </div>
         ) : (
           <IdleKeyboard />
@@ -637,7 +650,7 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
       </div>
       <div className="hub-connect">
         <DeviceConnect busy={busy} onConnect={s.authorize} />
-        {!devices.length && <h2>请连接设备</h2>}
+        {!hasDevices && <h2>请连接设备</h2>}
         <p>请通过USB数据线连接</p>
       </div>
       <div className="hub-bottom">
@@ -646,6 +659,76 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function DefinitionCard({
+  device,
+}: {
+  device: NonNullable<ReturnType<typeof useWorkspace.getState>['pendingDevices'][ModelId]>;
+}) {
+  const s = useWorkspace();
+  const file = useRef<HTMLInputElement>(null);
+  const busy = isWorkspaceBusy(s);
+  return (
+    <article className="connected-card definition-card">
+      <div className="connected-visual definition-visual">
+        <KeyboardIcon size={88} strokeWidth={1} />
+        <span>需要键盘定义</span>
+      </div>
+      <div className="connected-card-bottom">
+        <div>
+          <h2>{device.name}</h2>
+          <p>{device.message}</p>
+          <div className="definition-actions">
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={() => file.current?.click()}
+            >
+              <FileJson size={16} />
+              导入 JSON
+            </button>
+            <button
+              className="button"
+              disabled={busy}
+              onClick={() => void s.retryDefinition(device.model)}
+            >
+              重试
+            </button>
+          </div>
+        </div>
+      </div>
+      <button
+        className="connected-card-disconnect"
+        disabled={busy}
+        aria-label={`移除 ${device.name}`}
+        onClick={() => s.dismissPending(device.model)}
+      >
+        <X size={14} />
+        移除
+      </button>
+      <input
+        ref={file}
+        className="visually-hidden"
+        type="file"
+        accept="application/json,.json"
+        aria-label={`导入 ${device.name} 键盘定义`}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          if (f.size > 2_000_000) {
+            s.report('键盘定义不能超过 2 MB。');
+            return;
+          }
+          void f
+            .text()
+            .then((contents) => s.importDefinition(device.model, contents))
+            .catch(s.report);
+        }}
+      />
+    </article>
   );
 }
 
@@ -760,7 +843,7 @@ function KeymapPage() {
         </div>
         <div className="keyboard-stage">
           <div className="stage-label">
-            <span>{s.model === 'neo75cu' ? '75%' : '数字键盘'}</span>
+            <span>按键布局</span>
             <span>{s.layerId === s.draft.layers[0].id ? '基础层' : '功能层'}</span>
           </div>
           <Keyboard
@@ -1185,9 +1268,7 @@ function ProfilesPage() {
                 .then(parseProfile)
                 .then((p) => {
                   if (p.snapshot.model !== s.model)
-                    throw new Error(
-                      `此配置属于 ${MODEL_NAMES[p.snapshot.model]}，请在对应设备中导入。`,
-                    );
+                    throw new Error(`此配置属于 ${p.snapshot.name}，请在对应设备中导入。`);
                   return saveProfile(p.name, p.snapshot);
                 })
                 .then(() => {
@@ -1245,8 +1326,7 @@ function ProfilesPage() {
                     </span>
                   </h3>
                   <p>
-                    {MODEL_NAMES[p.snapshot.model]} ·{' '}
-                    {new Date(p.createdAt).toLocaleString('zh-CN')}{' '}
+                    {p.snapshot.name} · {new Date(p.createdAt).toLocaleString('zh-CN')}{' '}
                     {p.snapshot.identity.startsWith('DEMO:') ? '· 演示配置' : ''}
                   </p>
                 </div>

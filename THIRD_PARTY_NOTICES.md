@@ -16,12 +16,23 @@ VIAPP's application code is independently written and licensed under MIT. Third-
 - https://github.com/zmkfirmware/zmk/blob/main/app/src/studio/keymap_subsystem.c
 - https://github.com/zmkfirmware/zmk/blob/main/app/src/behavior.c
 
-## Neo75 Cu original tri-mode layout and protocol facts
+## VIA keyboard definition catalog
+
+`public/definitions/*.json` contains identity, matrix, layout and custom-key data extracted from `the-via/keyboards` at the revision recorded in `src/devices/via-index.json`. This separately licensed data remains GPL-3.0; its license, source revision and extraction notes are distributed in `public/definitions/LICENSE.txt` and `SOURCE.txt`, and in the application's license notices. `scripts/sync-via-catalog.mjs` reproduces the data from that revision. Custom menus are reduced to a feature flag; their implementation is not incorporated.
+
+- https://github.com/the-via/keyboards
+- https://caniusevia.com/docs/specification/
+- https://caniusevia.com/docs/layouts/
+
+VIAPP's parser, renderer, discovery and protocol code are independently implemented. Keyboard definitions are data and are never executed as scripts.
+
+## Neo65 Cu and Neo75 Cu original tri-mode layout and protocol facts
 
 Device identification, matrix addresses, physical layout options and original custom-key labels were transcribed from the manufacturer's definition. This is the tri-mode PCB definition, including when the PCB is used in wired mode; it is not the wired-only PCB definition.
 
 - https://www.qwertykeys.com/pages/fw
 - https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo75.JSON?v=1738163636
+- https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo65Cu_trimode.JSON?v=1737780787
 - https://www.qwertykeys.com/products/neo75cu
 - https://qwertykeys.notion.site/Neo75-Cu-Build-Guide-1183d0900942800fbe0ce7807ee38e30
 
@@ -30,6 +41,7 @@ VIA command identifiers and encoding facts were checked against the public proto
 - https://docs.qmk.fm/features/rawhid
 - https://github.com/qmk/qmk_firmware/blob/master/quantum/via.h
 - https://github.com/qmk/qmk_firmware/blob/master/quantum/via.c
+- https://github.com/qmk/qmk_firmware/blob/master/quantum/keycodes.h
 - https://github.com/qmk/qmk_firmware/blob/0.24.0/quantum/via.c (VIA 12 matrix-state packet)
 - https://github.com/the-via/app/tree/main/src/utils/key-to-byte
 
