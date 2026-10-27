@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { previewSnapshot, DemoDriver } from '../domain/demo';
 import {
   clone,
+  isZmkModel,
   layerName,
   assertCompatible,
   equalBinding,
@@ -19,7 +20,12 @@ import { ZmkDriver } from '../protocols/zmk';
 import { requestDeviceAccess, type DeviceAccess } from '../protocols/discovery';
 import { decodeMacro, type MacroStep } from '../domain/macros';
 import { snapshotLayout } from '../domain/via-definition';
-import { DefinitionRequired, importDefinition as storeDefinition } from '../devices/via-registry';
+import {
+  DefinitionRequired,
+  importDefinition as storeDefinition,
+  forgetDefinition,
+  type DefinitionChoice,
+} from '../devices/via-registry';
 import { normalizeEmptyBindings, referencedLayers } from '../domain/behaviors';
 
 type Page = 'devices' | 'keymap' | 'macros' | 'profiles' | 'test' | 'settings';
@@ -46,11 +52,14 @@ interface Workspace {
         name: string;
         message: string;
         access: Extract<DeviceAccess, { transport: 'hid' }>;
+        choices?: DefinitionChoice[];
       }
     >
   >;
   importDefinition(model: ModelId, contents: string): Promise<boolean>;
   retryDefinition(model: ModelId): Promise<boolean>;
+  selectDefinition(model: ModelId, key: string): Promise<boolean>;
+  changeDefinition(): Promise<void>;
   dismissPending(model: ModelId): void;
   autoSave: boolean;
   autoSaving: boolean;
@@ -229,6 +238,26 @@ export const useWorkspace = create<Workspace>((set, get) => ({
     const pending = get().pendingDevices[model];
     return pending ? get().connect(model, false, { access: pending.access }) : false;
   },
+  async selectDefinition(model, key) {
+    const pending = get().pendingDevices[model];
+    const choice = pending?.choices?.find((c) => c.key === key);
+    if (!pending || !choice || isWorkspaceBusy(get())) return false;
+    return get().importDefinition(model, JSON.stringify(choice.definition));
+  },
+  async changeDefinition() {
+    const s = get(),
+      handle = connectedHandles.get(s.model);
+    if (isWorkspaceBusy(s) || isZmkModel(s.model) || !handle || s.connection !== 'device') return;
+    const access: DeviceAccess = { model: s.model, transport: 'hid', device: handle as HIDDevice };
+    try {
+      forgetDefinition(access.device);
+      await get().disconnect(s.model);
+      set({ workspaceOpen: false, page: 'devices' });
+      await get().connect(s.model, false, { access });
+    } catch (error) {
+      get().report(error);
+    }
+  },
   dismissPending(model) {
     set((s) => {
       const pendingDevices = { ...s.pendingDevices };
@@ -341,14 +370,14 @@ export const useWorkspace = create<Workspace>((set, get) => ({
         // Obtain permission in the click before awaiting teardown. An offline
         // driver's close may still be releasing its exclusive serial handle.
         if (!demo && !access)
-          access = await requestDeviceAccess(model === 'tofu-pad' ? 'serial' : 'hid');
+          access = await requestDeviceAccess(isZmkModel(model) ? 'serial' : 'hid');
         await stale.close();
         drivers.delete(model);
       }
       // requestDevice/requestPort must run directly from the user's click, before any unrelated await.
       const opening = demo
         ? Promise.resolve(new DemoDriver(model))
-        : model !== 'tofu-pad'
+        : !isZmkModel(model)
           ? ViaDriver.connect(access?.transport === 'hid' ? access.device : undefined)
           : ZmkDriver.connect(access?.transport === 'serial' ? access.port : undefined);
       candidate = await opening;
@@ -462,6 +491,7 @@ export const useWorkspace = create<Workspace>((set, get) => ({
               name: access.device.productName || 'VIA 键盘',
               message: e.message,
               access,
+              choices: e.choices,
             },
           },
         }));

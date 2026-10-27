@@ -39,7 +39,7 @@ export function viaModel(vid: number, pid: number): ModelId {
 }
 export const validModel = (value: unknown): value is ModelId =>
   typeof value === 'string' &&
-  (/^via-[0-9a-f]{4}-[0-9a-f]{4}$/.test(value) ||
+  (/^(?:via|zmk)-[0-9a-f]{4}-[0-9a-f]{4}$/.test(value) ||
     ['neo75cu', 'neo65cu', 'tofu-pad'].includes(value));
 
 export function optionValues(options: LayoutOption[], packed: number): number[] {
@@ -212,6 +212,12 @@ export function parseViaDefinition(input: unknown): ViaDefinition {
       keys.filter((k) => k.option?.[0] === group && k.option[1] === value),
     );
     if (!sets[0].length) invalid('配列缺少默认选项');
+    // Some manufacturer definitions store indicator colors in layout bits and
+    // attach only a decal to that option. Preserve the bits without inventing keys.
+    if (sets.flat().every((k) => k.decal)) {
+      extraFeatures = true;
+      continue;
+    }
     const origin = (set: DefinitionKey[]) => ({
       x: Math.min(...set.map((k) => k.x)),
       y: Math.min(...set.map((k) => k.y)),

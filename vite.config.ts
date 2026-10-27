@@ -29,11 +29,11 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
-            urlPattern: /\/definitions\/[0-9a-f]{2}\.json(?:\?|$)/,
+            urlPattern: /\/definitions\/(?:[0-9a-f]{2}|manufacturers)\.json(?:\?|$)/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'viapp-definitions',
-              expiration: { maxEntries: 64 },
+              expiration: { maxEntries: 65 },
               cacheableResponse: { statuses: [200] },
             },
           },

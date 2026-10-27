@@ -3,9 +3,15 @@ import type { Behavior, Binding, DeviceSnapshot, Driver, Layer } from '../domain
 import { defaultLayerName, layerName } from '../domain/types';
 import type { ZmkRpc } from './zmk-rpc';
 import { normalizeEmptyBindings, validParameter } from '../domain/behaviors';
+import {
+  identifyZmkDevice,
+  serialFilters,
+  ZMK_DEVICES,
+  type ZmkDeviceDefinition,
+} from '../devices/zmk-registry';
+import { usbIdentity } from '../domain/via-definition';
 export { validParameter } from '../domain/behaviors';
-
-export const TOFU_USB = { usbVendorId: 0x9d5b, usbProductId: 0x2566 };
+export { TOFU_USB } from '../devices/zmk-registry';
 const behaviorKinds: Record<string, Behavior['kind']> = {
   'key press': 'key',
   transparent: 'transparent',
@@ -34,12 +40,17 @@ export function describeBehavior(info: GetBehaviorDetailsResponse): Behavior {
 }
 
 export class ZmkDriver implements Driver {
-  readonly model = 'tofu-pad' as const;
+  get model() {
+    return this.definition.model;
+  }
   onDisconnect?: (reason: string) => void;
   onLockChange?: (locked: boolean) => void;
   private latest?: DeviceSnapshot;
   private metadata = new Map<number, GetBehaviorDetailsResponse>();
-  constructor(readonly rpc: ZmkRpc) {
+  constructor(
+    readonly rpc: ZmkRpc,
+    private readonly definition: ZmkDeviceDefinition = ZMK_DEVICES[0],
+  ) {
     rpc.onDisconnect = (reason) => this.onDisconnect?.(reason);
     rpc.onNotification = (notification) => {
       if (notification.core?.lockStateChanged !== undefined) {
@@ -52,20 +63,16 @@ export class ZmkDriver implements Driver {
   static async connect(authorized?: SerialPort): Promise<ZmkDriver> {
     if (!window.isSecureContext || !navigator.serial)
       throw new Error('请使用桌面 Chrome / Edge，通过 HTTPS 或 localhost 打开网页。');
-    const port = authorized ?? (await navigator.serial.requestPort({ filters: [TOFU_USB] }));
-    const identity = port.getInfo();
-    if (
-      identity.usbVendorId !== TOFU_USB.usbVendorId ||
-      identity.usbProductId !== TOFU_USB.usbProductId
-    )
-      throw new Error('当前只支持 TOFU PAD 原装双模 PCB。');
+    const port = authorized ?? (await navigator.serial.requestPort({ filters: serialFilters }));
+    const definition = identifyZmkDevice(port.getInfo());
+    if (!definition) throw new Error('未收录这块 ZMK PCB，请先提交设备适配。');
     const { ZmkRpc, serialTransport } = await import('./zmk-rpc');
-    return new ZmkDriver(new ZmkRpc(await serialTransport(port)));
+    return new ZmkDriver(new ZmkRpc(await serialTransport(port)), definition);
   }
   async read(): Promise<DeviceSnapshot> {
     const device = (await this.rpc.call({ core: { getDeviceInfo: true } })).core?.getDeviceInfo;
-    if (!device || !/^tofu\s*pad\b/i.test(device.name))
-      throw new Error('这不是受支持的 TOFU PAD 原厂固件，未进行写入。');
+    if (!device || !this.definition.deviceName.test(device.name))
+      throw new Error('设备名称与原厂 PCB 不匹配，未进行写入。');
     const lockState = (await this.rpc.call({ core: { getLockState: true } })).core?.getLockState;
     if (lockState === undefined) throw new Error('未能读取 Studio 锁定状态。');
     const keymap = (await this.rpc.call({ keymap: { getKeymap: true } })).keymap?.getKeymap;
@@ -77,8 +84,8 @@ export class ZmkDriver implements Driver {
       !active ||
       !keymap.layers.length ||
       keymap.layers.length > 32 ||
-      active.keys.length < 10 ||
-      active.keys.length > 32 ||
+      active.keys.length < this.definition.minKeys ||
+      active.keys.length > this.definition.maxKeys ||
       keymap.layers.some((l) => l.bindings.length !== active.keys.length)
     )
       throw new Error('设备的按键布局或层数据不完整，已停止读取。');
@@ -98,8 +105,10 @@ export class ZmkDriver implements Driver {
     if (unsaved === undefined) throw new Error('未能确认设备的保存状态。');
     const snapshot: DeviceSnapshot = {
       model: this.model,
-      name: 'TOFU PAD',
-      identity: `9D5B:2566:${Array.from(device.serialNumber)
+      name: this.definition.name,
+      identity: `${usbIdentity(this.definition.usbVendorId, this.definition.usbProductId)}:${Array.from(
+        device.serialNumber,
+      )
         .map((n) => n.toString(16).padStart(2, '0'))
         .join('')}`,
       protocol: 'zmk',

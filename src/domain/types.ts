@@ -1,6 +1,12 @@
 import type { BehaviorBindingParametersSet } from '@zmkfirmware/zmk-studio-ts-client/behaviors';
 import { snapshotLayout, type ViaDefinition } from './via-definition';
-export type ModelId = 'neo75cu' | 'neo65cu' | 'tofu-pad' | `via-${string}-${string}`;
+export type ModelId =
+  | 'neo75cu'
+  | 'neo65cu'
+  | 'tofu-pad'
+  | `via-${string}-${string}`
+  | `zmk-${string}-${string}`;
+export const isZmkModel = (model: ModelId) => model === 'tofu-pad' || model.startsWith('zmk-');
 export type Binding =
   | { type: 'via'; code: number }
   | { type: 'zmk'; behaviorId: number; param1: number; param2: number };

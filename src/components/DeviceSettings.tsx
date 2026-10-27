@@ -14,6 +14,7 @@ import { useWorkspace, isDirty, isWorkspaceBusy } from '../state/workspace';
 import { Keyboard } from './Keyboard';
 import { Modal } from './Modal';
 import { snapshotOptions, optionValues, setOption } from '../domain/via-definition';
+import { hasDefinitionChoices } from '../devices/via-registry';
 import './DeviceSettings.css';
 
 export function DeviceSettings() {
@@ -30,6 +31,13 @@ export function DeviceSettings() {
   const macroUsed = s.draft.macros.reduce((n, m) => n + m.length + 1, 0);
   const layoutOptions = snapshotOptions(s.draft);
   const choices = optionValues(layoutOptions, s.draft.layoutOptions);
+  const physicalOptions = layoutOptions
+    .map((item, group) => ({ item, group }))
+    .filter(
+      ({ group }) =>
+        !s.draft.viaDefinition ||
+        s.draft.viaDefinition.keys.some((k) => !k.decal && k.option?.[0] === group),
+    );
   return (
     <div className="settings-grid">
       <div className="settings-main">
@@ -118,7 +126,7 @@ export function DeviceSettings() {
             </div>
           )}
         </section>
-        {s.draft.protocol === 'via' && layoutOptions.length > 0 && (
+        {s.draft.protocol === 'via' && physicalOptions.length > 0 && (
           <section className="panel settings-section">
             <div className="panel-heading">
               <div>
@@ -130,7 +138,7 @@ export function DeviceSettings() {
               </div>
             </div>
             <div className="layout-options">
-              {layoutOptions.map((item, group) => (
+              {physicalOptions.map(({ item, group }) => (
                 <div className="layout-option" key={group}>
                   <span>{item.label}</span>
                   <div className="setting-segments" role="group" aria-label={item.label}>
@@ -230,6 +238,15 @@ export function DeviceSettings() {
             </div>
           )}
         </dl>
+        {s.draft.protocol === 'via' && hasDefinitionChoices(s.draft.identity) && (
+          <button
+            className="button"
+            disabled={busy || s.connection !== 'device'}
+            onClick={() => void s.changeDefinition()}
+          >
+            更换 PCB 版本
+          </button>
+        )}
         <details className="device-details">
           <summary>
             <Cpu size={15} />

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authorizedDevices, identifyHid, identifySerial, requestDeviceAccess } from './discovery';
 import { NEO_USB } from './via';
 import { TOFU_USB } from './zmk';
+import { ZMK_DEVICES, serialFilters } from '../devices/zmk-registry';
 
 const hid = {
   ...NEO_USB,
@@ -10,6 +11,20 @@ const hid = {
 const serial = { getInfo: () => TOFU_USB, connected: true } as unknown as SerialPort;
 afterEach(() => vi.unstubAllGlobals());
 describe('permission-based device discovery', () => {
+  it('identifies all registered TOFU Studio ports and scopes reconnect permission', async () => {
+    const requestPort = vi.fn();
+    vi.stubGlobal('window', { isSecureContext: true });
+    vi.stubGlobal('navigator', { serial: { requestPort } });
+    for (const [index, definition] of ZMK_DEVICES.entries()) {
+      const port = { getInfo: () => serialFilters[index] } as SerialPort;
+      expect(identifySerial(port)?.model).toBe(definition.model);
+      requestPort.mockResolvedValue(port);
+      expect((await requestDeviceAccess('serial', definition.model)).model).toBe(definition.model);
+      expect(requestPort).toHaveBeenLastCalledWith({ filters: [serialFilters[index]] });
+    }
+    await requestDeviceAccess('serial');
+    expect(requestPort).toHaveBeenLastCalledWith({ filters: serialFilters });
+  });
   it('recognizes supported original USB interfaces and rejects unrelated devices', () => {
     expect(identifyHid(hid)?.model).toBe('neo75cu');
     expect(identifySerial(serial)?.model).toBe('tofu-pad');

@@ -621,7 +621,7 @@ test('the connection menu opens only the chosen native picker without a model se
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitem')).toHaveCount(2);
   await expect(menu).toContainText('自动识别键盘');
-  await expect(menu).toContainText('TOFU PAD');
+  await expect(menu).toContainText('TOFU 系列');
   await expect(page.locator('html')).not.toHaveAttribute('data-permission-requests', '1');
   await expect(page.locator('html')).not.toHaveAttribute('data-serial-requests', '1');
   await page.getByRole('menuitem', { name: '连接 VIA', exact: true }).click();

@@ -1,21 +1,19 @@
 import { hasViaInterface, viaFilters } from '../devices/via-registry';
 import { viaModel } from '../domain/via-definition';
 import type { ModelId } from '../domain/types';
-import { TOFU_USB } from './zmk';
+import { identifyZmkDevice, serialFilters, ZMK_DEVICES } from '../devices/zmk-registry';
 
 export type DeviceAccess =
   | { model: ModelId; transport: 'hid'; device: HIDDevice }
-  | { model: 'tofu-pad'; transport: 'serial'; port: SerialPort };
+  | { model: ModelId; transport: 'serial'; port: SerialPort };
 export function identifyHid(device: HIDDevice): DeviceAccess | null {
   return hasViaInterface(device) && !(device.vendorId === 0x36b0 && device.productId === 0x3002)
     ? { model: viaModel(device.vendorId, device.productId), transport: 'hid', device }
     : null;
 }
 export function identifySerial(port: SerialPort): DeviceAccess | null {
-  const info = port.getInfo();
-  return info.usbVendorId === TOFU_USB.usbVendorId && info.usbProductId === TOFU_USB.usbProductId
-    ? { model: 'tofu-pad', transport: 'serial', port }
-    : null;
+  const definition = identifyZmkDevice(port.getInfo());
+  return definition ? { model: definition.model, transport: 'serial', port } : null;
 }
 export async function authorizedDevices(): Promise<DeviceAccess[]> {
   if (!window.isSecureContext) return [];
@@ -55,7 +53,13 @@ export async function requestDeviceAccess(
         )
           .map(identifyHid)
           .find(Boolean)
-      : identifySerial(await navigator.serial.requestPort({ filters: [TOFU_USB] }));
+      : identifySerial(
+          await navigator.serial.requestPort({
+            filters: model
+              ? serialFilters.filter((_, i) => ZMK_DEVICES[i].model === model)
+              : serialFilters,
+          }),
+        );
   if (!access) throw new DOMException('未选择受支持的设备。', 'NotFoundError');
   return access;
 }

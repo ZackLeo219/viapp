@@ -8,6 +8,7 @@ interface Device {
   cols: number;
   layers?: number;
   ephemeral?: boolean;
+  layout?: number;
 }
 async function fixture(page: Page, devices: Device[], granted = true) {
   await page.addInitScript(
@@ -21,13 +22,14 @@ async function fixture(page: Page, devices: Device[], granted = true) {
         productId: number;
         productName: string;
         keymap: Uint8Array;
-        layout = 0;
+        layout: number;
         plugged = true;
         constructor(readonly config: Device) {
           super();
           this.vendorId = config.vid;
           this.productId = config.pid;
           this.productName = config.name;
+          this.layout = config.layout ?? 0;
           const previous = sessionStorage.getItem(`keys:${config.pid}`);
           this.keymap = previous
             ? Uint8Array.from(JSON.parse(previous))
@@ -47,8 +49,10 @@ async function fixture(page: Page, devices: Device[], granted = true) {
           if (r[0] === 1) r.set([0, 12], 1);
           else if (r[0] === 0x11) r[1] = this.config.layers ?? 2;
           else if (r[0] === 2 && r[1] === 2) view.setUint32(2, this.layout);
-          else if (r[0] === 3 && r[1] === 2) this.layout = view.getUint32(2);
-          else if (r[0] === 0x12)
+          else if (r[0] === 3 && r[1] === 2) {
+            this.layout = view.getUint32(2);
+            document.documentElement.dataset.lastLayoutWrite = String(this.layout);
+          } else if (r[0] === 0x12)
             r.set(this.keymap.slice(r[1] * 256 + r[2], r[1] * 256 + r[2] + r[3]), 4);
           else if (r[0] === 5 || r[0] === 4) {
             const offset = ((r[1] * this.config.rows + r[2]) * this.config.cols + r[3]) * 2;
@@ -156,6 +160,86 @@ test('Neo65 is discovered with its own layout, auto-saves the correct matrix pos
     api.plug(0x3060);
   });
   await expect(page.getByRole('button', { name: 'Neo65 Cu 开始配置', exact: true })).toBeVisible();
+});
+
+for (const config of [
+  { vid: 0x36b0, pid: 0x30c2, name: 'Neo80 Cu', rows: 6, cols: 16, keys: 87 },
+  { vid: 0x9d5b, pid: 0x2504, name: 'TOFU60 3.0', rows: 14, cols: 8, keys: 61 },
+  { vid: 0x9d5b, pid: 0x2505, name: 'TOFU65 3.0', rows: 14, cols: 8, keys: 67 },
+  { vid: 0x9d5b, pid: 0x2506, name: 'TOFU TKL', rows: 14, cols: 8, keys: 87 },
+  { vid: 0x9d5b, pid: 0x2511, name: 'TOFU PAD', rows: 14, cols: 8, keys: 18 },
+])
+  test(`${config.name} manufacturer VIA definition loads, saves and survives refresh`, async ({
+    page,
+  }) => {
+    await fixture(page, [{ ...config, layers: 4 }]);
+    await page.goto('/');
+    await page.getByRole('button', { name: `${config.name} 开始配置`, exact: true }).click();
+    const keyboard = page.getByRole('group', { name: `${config.name} 基础层可视化键盘` });
+    await expect(keyboard.locator('[data-key-index]')).toHaveCount(config.keys);
+    const key = keyboard.locator('[data-key-index]').first();
+    const index = Number(await key.getAttribute('data-key-index'));
+    await key.click();
+    await page.getByRole('group', { name: '录入目标按键' }).press('b');
+    await expect(page.locator('.save-bar')).toContainText('已保存到键盘');
+    expect(
+      await page.evaluate(() => JSON.parse(document.documentElement.dataset.lastWrite!)),
+    ).toMatchObject({
+      pid: config.pid,
+      row: Math.floor(index / config.cols),
+      col: index % config.cols,
+      code: 5,
+    });
+    await page.reload();
+    await page.getByRole('button', { name: `${config.name} 开始配置`, exact: true }).click();
+    await expect(page.locator(`[data-key-index="${index}"]`)).toHaveAttribute('aria-label', /^B，/);
+    await page.getByRole('button', { name: '设备设置', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '物理配列', exact: true })).toBeVisible();
+    await expect(page.getByRole('group', { name: /Lock Color/ })).toHaveCount(0);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
+for (const width of [1536, 390, 320])
+  test(`shared Neo80 USB identity requires a remembered PCB choice at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 960 });
+    await fixture(page, [{ vid: 0x4e45, pid: 0x3830, name: 'NEO80 Cu', rows: 6, cols: 17 }]);
+    await page.goto('/');
+    await expect(page.locator('.definition-card')).toContainText('选择 PCB 版本');
+    expect(await page.evaluate(() => document.documentElement.dataset.lastWrite)).toBeUndefined();
+    await expect(page.getByRole('button', { name: '载入配列', exact: true })).toBeDisabled();
+    await page
+      .getByRole('combobox', { name: 'NEO80 Cu PCB 版本' })
+      .selectOption({ label: 'Neo80 Cu · 有线 ANSI' });
+    await page.getByRole('button', { name: '载入配列', exact: true }).click();
+    await page.getByRole('button', { name: 'Neo80 Cu 开始配置', exact: true }).click();
+    await expect(page.locator('[data-key-index]')).toHaveCount(87);
+    await page.reload();
+    await page.getByRole('button', { name: 'Neo80 Cu 开始配置', exact: true }).click();
+    await page.getByRole('button', { name: '设备设置', exact: true }).click();
+    await page.getByRole('button', { name: '更换 PCB 版本', exact: true }).click();
+    await expect(page.locator('.definition-card')).toContainText('选择 PCB 版本');
+    expect(await page.evaluate(() => document.documentElement.dataset.lastWrite)).toBeUndefined();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+
+test('TOFU layout editing preserves indicator-color bits from the firmware', async ({ page }) => {
+  await fixture(page, [{ vid: 0x9d5b, pid: 0x2505, name: 'TOFU65', rows: 14, cols: 8, layout: 5 }]);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'TOFU65 3.0 开始配置', exact: true }).click();
+  await page.getByRole('button', { name: '设备设置', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'Space Row' })
+    .getByRole('button', { name: '7u', exact: true })
+    .click();
+  await expect(page.locator('.save-bar')).toContainText('已保存到键盘');
+  await expect(
+    page.getByRole('group', { name: 'Space Row' }).getByRole('button', { name: '7u', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => document.documentElement.dataset.lastLayoutWrite)).toBe('13');
 });
 
 test('catalog-backed keyboard loads without a model picker or Neo-specific functions', async ({

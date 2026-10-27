@@ -13,7 +13,7 @@ const connections = [
   {
     transport: 'serial',
     protocol: 'ZMK Studio',
-    description: 'TOFU PAD 原装双模 PCB',
+    description: 'TOFU 系列原装双模 PCB',
     icon: Calculator,
   },
 ] as const;

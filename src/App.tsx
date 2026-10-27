@@ -1,3 +1,4 @@
+import { isZmkModel } from './domain/types';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
@@ -323,9 +324,7 @@ export default function App() {
               {!hub && s.connection === 'offline' && inWorkspace && (
                 <Button
                   primary
-                  onClick={() =>
-                    void s.authorize(s.model === 'tofu-pad' ? 'serial' : 'hid', s.model)
-                  }
+                  onClick={() => void s.authorize(isZmkModel(s.model) ? 'serial' : 'hid', s.model)}
                   disabled={busy}
                 >
                   {busy ? <LoaderCircle className="spin" size={17} /> : <RotateCcw size={17} />}
@@ -568,7 +567,8 @@ export default function App() {
               <span>原装双模 PCB</span>
             </li>
           </ul>
-          <p>其他 VIA 键盘会自动匹配定义，缺少时可导入厂商 VIA JSON。</p>
+          <p>其他 VIA 键盘自动匹配定义；部分 PCB 需选择版本，缺少时可导入厂商 JSON。</p>
+          <p>ZMK 另已接入 TOFU60 3.0、TOFU65 3.0、TOFU TKL 原装双模 PCB，待真机验证。</p>
           <p>当前支持 USB 有线配置，暂不支持 2.4 GHz 和蓝牙配置。</p>
           <div className="help-links">
             <a href="https://github.com/ZackLeo219/viapp#使用" target="_blank" rel="noreferrer">
@@ -617,7 +617,7 @@ function DeviceHub({ onDemo }: { onDemo(): void }) {
                   onClick={() =>
                     session.connection === 'offline'
                       ? void s.authorize(
-                          session.model === 'tofu-pad' ? 'serial' : 'hid',
+                          isZmkModel(session.model) ? 'serial' : 'hid',
                           session.model,
                         )
                       : transitionWorkspace(() => s.openDevice(session.model))
@@ -700,33 +700,60 @@ function DefinitionCard({
 }) {
   const s = useWorkspace();
   const file = useRef<HTMLInputElement>(null);
+  const [definitionKey, setDefinitionKey] = useState('');
   const busy = isWorkspaceBusy(s);
   return (
     <article className="connected-card definition-card">
       <div className="connected-visual definition-visual">
         <KeyboardIcon size={88} strokeWidth={1} />
-        <span>需要键盘定义</span>
+        <span>{device.choices?.length ? '选择 PCB 版本' : '需要键盘定义'}</span>
       </div>
       <div className="connected-card-bottom">
         <div>
           <h2>{device.name}</h2>
           <p>{device.message}</p>
+          {!!device.choices?.length && (
+            <div className="definition-choice">
+              <select
+                aria-label={`${device.name} PCB 版本`}
+                value={definitionKey}
+                onChange={(e) => setDefinitionKey(e.target.value)}
+                disabled={busy}
+              >
+                <option value="">选择 PCB 版本</option>
+                {device.choices.map((choice) => (
+                  <option key={choice.key} value={choice.key}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="button primary"
+                disabled={busy || !device.choices.some((c) => c.key === definitionKey)}
+                onClick={() => void s.selectDefinition(device.model, definitionKey)}
+              >
+                载入配列
+              </button>
+            </div>
+          )}
           <div className="definition-actions">
             <button
-              className="button primary"
+              className={`button ${device.choices?.length ? '' : 'primary'}`}
               disabled={busy}
               onClick={() => file.current?.click()}
             >
               <FileJson size={16} />
               导入 JSON
             </button>
-            <button
-              className="button"
-              disabled={busy}
-              onClick={() => void s.retryDefinition(device.model)}
-            >
-              重试
-            </button>
+            {!device.choices?.length && (
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() => void s.retryDefinition(device.model)}
+              >
+                重试
+              </button>
+            )}
           </div>
         </div>
       </div>

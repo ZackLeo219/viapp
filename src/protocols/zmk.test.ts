@@ -5,6 +5,8 @@ import type { Request } from '@zmkfirmware/zmk-studio-ts-client/studio';
 import type { Layer as RpcLayer } from '@zmkfirmware/zmk-studio-ts-client/keymap';
 import { applyConfiguration, sameConfiguration } from '../domain/apply';
 import { clone } from '../domain/types';
+import { validateSnapshot } from '../domain/profiles';
+import { ZMK_DEVICES, type ZmkDeviceDefinition } from '../devices/zmk-registry';
 
 describe('original TOFU PAD firmware metadata', () => {
   it('accepts zero for omitted parameters and rejects nonzero data', () => {
@@ -29,13 +31,17 @@ describe('original TOFU PAD firmware metadata', () => {
   });
 });
 
-function firmware() {
+function firmware(
+  definition: ZmkDeviceDefinition = ZMK_DEVICES[0],
+  keyCount = 18,
+  name = 'TOFU PAD',
+) {
   const empty = { behaviorId: 0, param1: 0, param2: 0 };
   let order = [0, 1];
   let layers: RpcLayer[] = Array.from({ length: 4 }, (_, id) => ({
     id,
     name: '',
-    bindings: Array.from({ length: 18 }, () => ({ ...empty })),
+    bindings: Array.from({ length: keyCount }, () => ({ ...empty })),
   }));
   layers[0].bindings[0] = { behaviorId: 7, param1: 0x70004, param2: 0 };
   layers[2].bindings[17] = { behaviorId: 99, param1: 2, param2: 0 };
@@ -49,7 +55,7 @@ function firmware() {
   });
   const call = vi.fn(async (request: Omit<Request, 'requestId'>) => {
     if (request.core?.getDeviceInfo)
-      return { core: { getDeviceInfo: { name: 'TOFU PAD', serialNumber: new Uint8Array([1]) } } };
+      return { core: { getDeviceInfo: { name, serialNumber: new Uint8Array([1]) } } };
     if (request.core?.getLockState) return { core: { getLockState: 1 } };
     if (request.behaviors?.listAllBehaviors)
       return { behaviors: { listAllBehaviors: { behaviors: [7, 40, 99] } } };
@@ -85,9 +91,9 @@ function firmware() {
             layouts: [
               {
                 name: 'ALL_KEYS',
-                keys: Array.from({ length: 18 }, (_, i) => ({
-                  x: (i % 4) * 100,
-                  y: Math.floor(i / 4) * 100,
+                keys: Array.from({ length: keyCount }, (_, i) => ({
+                  x: (i % 16) * 100,
+                  y: Math.floor(i / 16) * 100,
                   width: 100,
                   height: 100,
                   r: 0,
@@ -143,7 +149,7 @@ function firmware() {
     throw new Error('Unexpected firmware request');
   });
   return {
-    driver: new ZmkDriver({ call } as unknown as ZmkRpc),
+    driver: new ZmkDriver({ call } as unknown as ZmkRpc, definition),
     call,
     rejectMove() {
       failMove = true;
@@ -151,6 +157,47 @@ function firmware() {
     raw: () => clone({ order, layers }),
   };
 }
+describe('TOFU family self-described Studio layouts', () => {
+  it.each([
+    [1, 61, 'Tofu60 BLE 3.0(USB)'],
+    [2, 68, 'Tofu65 BLE 3.0(USB)'],
+    [3, 88, 'Tofu TKL BLE v3.0'],
+  ] as const)(
+    'reads and saves model %i using firmware-provided positions',
+    async (index, count, name) => {
+      const { driver, call } = firmware(ZMK_DEVICES[index], count, name);
+      const before = await driver.read();
+      expect(before.name).toBe(ZMK_DEVICES[index].name);
+      expect(before.model).toBe(ZMK_DEVICES[index].model);
+      expect(before.identity).toMatch(/^9D5B:256[234]:01$/);
+      expect(before.keys).toHaveLength(count);
+      expect(validateSnapshot(before)).toEqual(before);
+      const desired = clone(before);
+      desired.layers[0].bindings[count - 1] = {
+        type: 'zmk',
+        behaviorId: 7,
+        param1: 0x70005,
+        param2: 0,
+      };
+      const applied = await applyConfiguration(driver, before, desired, async () => {});
+      expect(sameConfiguration(applied, desired)).toBe(true);
+      expect(
+        call.mock.calls.some(([r]) => r.keymap?.setLayerBinding?.keyPosition === count - 1),
+      ).toBe(true);
+      const restored = await applyConfiguration(driver, applied, before, async () => {});
+      expect(sameConfiguration(restored, before)).toBe(true);
+    },
+  );
+  it('rejects a name mismatch before reading or modifying a keymap', async () => {
+    const { driver, call } = firmware(ZMK_DEVICES[1], 61, 'Unrelated board');
+    await expect(driver.read()).rejects.toThrow('不匹配');
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+  it('rejects a layout outside the registered model range', async () => {
+    const { driver } = firmware(ZMK_DEVICES[1], 90, 'Tofu60 BLE 3.0(USB)');
+    await expect(driver.read()).rejects.toThrow('布局');
+  });
+});
 describe('ZMK layer RPC transactions', () => {
   it('reads layer capacity and treats unassigned bindings as transparent', async () => {
     const { driver } = firmware(),

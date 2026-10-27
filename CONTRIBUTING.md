@@ -35,6 +35,8 @@ pnpm test:package     # 检查当前系统的离线包
 - 收集原装 PCB 版本、固件版本、USB VID/PID、可用配置接口、官方配列或 JSON。不要上传序列号、个人键位备份或私人宏内容。
 - 标准 VIA 设备无需逐一新增型号代码：通用适配器读取矩阵、配列选项和厂商按键定义。优先提交或修正定义；本地也可直接导入厂商 JSON。
 - 内置定义库来自固定版本的 `the-via/keyboards`。更新时在它的 checkout 上运行 `node scripts/sync-via-catalog.mjs /path/to/keyboards`，检查数据变化并保留 GPL 数据许可。VIAPP 的应用代码使用 MIT。
+- 厂商单独发布的 VIA 定义登记在 `src/devices/manufacturer-sources.json`，记录原始链接、PCB 版本和 SHA256，运行 `node scripts/sync-manufacturer-catalog.mjs` 生成补充库。共享 USB 编号时保留版本选择，不能猜配列。
+- ZMK Studio 不使用 VIA JSON。原装 PCB 的 USB 编号和固件名称登记在 `src/devices/zmk-registry.ts`，配列、图层及行为从固件读取；请提供厂商源码或协议记录作为依据。
 - 特殊协议在 `src/protocols/discovery.ts` 登记识别。检查具体接口，避免误识别；共享 USB 编号的不同 PCB 不能随意选择一份定义。
 - 复用经过验证的协议适配器，或在 `src/protocols/` 新增适配器。遵循 `Driver` 接口，处理超时、断开、锁定、提交和读回校验。
 - 在工作台中接入连接逻辑，并更新帮助中的支持列表、README 和测试。

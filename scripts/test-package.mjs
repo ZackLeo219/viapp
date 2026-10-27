@@ -53,6 +53,12 @@ try {
   assert.equal(catalog.status, 200);
   assert.equal((await catalog.json())['5946:0001'].v3[0].definition.name, 'Claw44');
   assert.equal((await fetch(new URL('definitions/LICENSE.txt', url))).status, 200);
+  const manufacturerCatalog = await (
+    await fetch(new URL('definitions/manufacturers.json', url))
+  ).json();
+  assert.equal(manufacturerCatalog['36B0:30C2'][0].definition.name, 'Neo80 Cu');
+  assert.equal(manufacturerCatalog['9D5B:2511'][0].definition.name, 'TOFU PAD');
+  assert.equal((await fetch(new URL('definitions/MANUFACTURER-SOURCES.txt', url))).status, 200);
   assert.equal((await fetch(url, { method: 'POST' })).status, 405);
   const second = spawn(resolve(root, 'release', binary), launchArgs, {
     stdio: 'ignore',

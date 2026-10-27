@@ -90,6 +90,20 @@ describe('definition-driven VIA layouts', () => {
     expect(setOption(options, 0x80000005, 0, 1)).toBe(0x80000003);
     expect(() => setOption(options, 0, 0, 3)).toThrow();
   });
+  it('preserves manufacturer indicator bits without treating decals as physical keys', () => {
+    const d = parseViaDefinition({
+      ...fixture(),
+      layouts: {
+        labels: ['Split', ['Indicator', 'White', 'Red', 'Off']],
+        keymap: [['0,0\n\n\n0,0', { w: 2 }, '0,0\n\n\n0,1', { d: true }, '0,0\n\n\n1,0']],
+      },
+    });
+    expect(definitionLayout(d, 2)).toHaveLength(1);
+    const packed = setOption(d.options, 2, 0, 1);
+    expect(packed).toBe(6);
+    expect(definitionLayout(d, packed)[0].w).toBe(2);
+    expect(d.extraFeatures).toBe(true);
+  });
   it('keeps generic keycodes independent of Neo wireless mode bindings', () => {
     const s = snapshot();
     expect(actionsFor(s).some((a) => a.special === 'custom:0')).toBe(false);

@@ -49,7 +49,7 @@ export function Keyboard({
   }, [keys]);
   return (
     <svg
-      className={`keyboard-svg ${snapshot.model === 'tofu-pad' ? 'numpad' : ''} ${miniature ? 'miniature' : ''}`}
+      className={`keyboard-svg ${bounds.width < bounds.height ? 'numpad' : ''} ${miniature ? 'miniature' : ''}`}
       style={
         transitionName
           ? {

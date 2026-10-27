@@ -1,4 +1,4 @@
-import { clone, type DeviceSnapshot, type ModelId, type Binding } from './types';
+import { clone, isZmkModel, type DeviceSnapshot, type ModelId, type Binding } from './types';
 import {
   validModel,
   validateCompiledDefinition,
@@ -71,7 +71,7 @@ export function validateSnapshot(value: unknown): DeviceSnapshot {
   const s = value;
   if (
     !validModel(s.model) ||
-    (s.model === 'tofu-pad' ? s.protocol !== 'zmk' : s.protocol !== 'via') ||
+    (isZmkModel(s.model) ? s.protocol !== 'zmk' : s.protocol !== 'via') ||
     !text(s.name) ||
     !text(s.identity) ||
     !text(s.capturedAt) ||

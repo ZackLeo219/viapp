@@ -1,0 +1,607 @@
+{
+  "sources": [
+    {
+      "key": "fb978d7fab66",
+      "name": "Neo75",
+      "label": "Neo75 · 成品 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo_75_Prebuilt.JSON?v=1778238784",
+      "sha256": "fb978d7fab66d2478a1820602801dde99d5f248f48dade39e8b7a0c4d8292a79"
+    },
+    {
+      "key": "d888659c23d4",
+      "name": "Neo75",
+      "label": "Neo75 · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/NEO75_1.JSON?v=1770825529",
+      "sha256": "d888659c23d4979e084c32f8cace6bb7a5d95ea58e3c891ea3f7f4a4e13270a3"
+    },
+    {
+      "key": "b764bb2e990a",
+      "name": "Neo75",
+      "label": "Neo75 · 三模 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo__75__ansi_1.JSON?v=1770825790",
+      "sha256": "b764bb2e990a905f91fa50440c659115dbfad24424829b2ad69299d354f85c1b"
+    },
+    {
+      "key": "351a4a5bccd6",
+      "name": "Neo75",
+      "label": "Neo75 · 三模 ISO",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo__75__iso_1.JSON?v=1770825858",
+      "sha256": "351a4a5bccd6a45b27074dc544b4a76ca701564dca92d82c3b9d407bc3e02fdb"
+    },
+    {
+      "key": "faa44e436d3d",
+      "name": "Neo98",
+      "label": "Neo98 · 成品 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo_98_Prebuilt.JSON?v=1778238798",
+      "sha256": "faa44e436d3d678c2f57f8890a42609e674a7e835f1255d3ef5b377494da2d66"
+    },
+    {
+      "key": "b15678898060",
+      "name": "Neo98",
+      "label": "Neo98 · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/NEO98_1.JSON?v=1770825964",
+      "sha256": "b15678898060c648bbee53dca941ac166ef3c15acb0e62108431155bbbddedcf"
+    },
+    {
+      "key": "802cdcbb3c66",
+      "name": "Neo98",
+      "label": "Neo98 · 三模 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo_98-_ANSI_1.JSON?v=1770825975",
+      "sha256": "802cdcbb3c6667a106818e1ef7cb0c5924c6b470e8965da6c412b069d35fd7fa"
+    },
+    {
+      "key": "e9b7eea4b7d6",
+      "name": "Neo98",
+      "label": "Neo98 · 三模 ISO",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo__98-_ISO_1.JSON?v=1770825985",
+      "sha256": "e9b7eea4b7d65c775cc23f8f0c0254b11ba8b49db857ffd68d8677963f0ad5b8"
+    },
+    {
+      "key": "892fab926a61",
+      "name": "Neo65",
+      "label": "Neo65 · 有线热插拔",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo65_ansi._v3.json?v=1695030278",
+      "sha256": "892fab926a617543861e8e1275db36fa1730c8e7b057c65f1565e6cde698d133"
+    },
+    {
+      "key": "efc401f745a7",
+      "name": "Neo65",
+      "label": "Neo65 · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo65_solder_v3.json?v=1695371198",
+      "sha256": "efc401f745a7c6c1cdb96cac826958ecfa0aeeb50ffd2213e9706f295c319d57"
+    },
+    {
+      "key": "37422bdbf521",
+      "name": "Neo65",
+      "label": "Neo65 · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/NEO65_0816.json",
+      "sha256": "37422bdbf521b07b4f97f1e6b38777d236c211e1ec3a09f0e31c98e6c820ccb6"
+    },
+    {
+      "key": "f2f3f5aed4dd",
+      "name": "Neo70",
+      "label": "Neo70 · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo70_ansi_v3.json?v=1711355838",
+      "sha256": "f2f3f5aed4dd45b9e9a9b55c319d2953847f76a65757b5e82167a954807a9247"
+    },
+    {
+      "key": "f03ad58affb9",
+      "name": "Neo70",
+      "label": "Neo70 · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo70_via_v1_03_20231130.json?v=1701422858",
+      "sha256": "f03ad58affb97129b829dfa904e4def42c6e24ff5b2c45e98f736d9282fefd7f"
+    },
+    {
+      "key": "871a8b92a845",
+      "name": "Neo80",
+      "label": "Neo80 · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo80_wired_v3.json?v=1704792029",
+      "sha256": "871a8b92a845686cd849359ecc9fb48dbaaf9d4ca712cc5c2dcbe71033379083"
+    },
+    {
+      "key": "471cddaf2c1c",
+      "name": "Neo80",
+      "label": "Neo80 · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo80_wireless.json?v=1704792029",
+      "sha256": "471cddaf2c1c92250e4844d96ae199cbb1d13bd4a765e472a986200be97cefec"
+    },
+    {
+      "key": "b8de18665f5c",
+      "name": "Neo Ergo",
+      "label": "Neo Ergo · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo_ergo_v3.json?v=1732093610",
+      "sha256": "b8de18665f5ccb58c182d2f3ef7f999312745c22b5c2b9839fec778c9ad77d26"
+    },
+    {
+      "key": "15cb413a9cc0",
+      "name": "Neo Ergo",
+      "label": "Neo Ergo · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/ergo-trimode.json?v=1719801910",
+      "sha256": "15cb413a9cc0498245faa7b3cf9a8b2c37b503e2e0c3ce2c03ef1080c5bb9358"
+    },
+    {
+      "key": "2b2f4b3106b9",
+      "name": "Neo75 Cu",
+      "label": "Neo75 Cu · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/neo75-wired.json?v=1728357106",
+      "sha256": "2b2f4b3106b9264157cb5233dac9bffef0ab8aa62a4eb22a473aaaaca737ad72"
+    },
+    {
+      "key": "196ae4648edf",
+      "name": "Neo75 Cu",
+      "label": "Neo75 Cu · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo75.JSON?v=1738163636",
+      "sha256": "196ae4648edf1de5cd8271c0e86fbd1cc0a1ba6b0d6c21c9e33e1629432e8e98"
+    },
+    {
+      "key": "9b3da7bbae69",
+      "name": "Neo65 Cu",
+      "label": "Neo65 Cu · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo65_Cu_wired.json?v=1737780787",
+      "sha256": "9b3da7bbae6989d380c774bd8053c8bc205c641f75625aea0308220d94a5c254"
+    },
+    {
+      "key": "cf51a178da83",
+      "name": "Neo65 Cu",
+      "label": "Neo65 Cu · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo65Cu_trimode.JSON?v=1737780787",
+      "sha256": "cf51a178da83992e357693705d635d996a8d368dcf17eb0b8b0f47e9b4031c87"
+    },
+    {
+      "key": "11747e4499db",
+      "name": "Neo60 Cu / Core",
+      "label": "Neo60 Cu / Core · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo60Cu_wired.json?v=1737780787",
+      "sha256": "11747e4499db01d88b4b6605dbed775d449790032c3b7156e3fcdb398ada96a9"
+    },
+    {
+      "key": "708aa36a1a0c",
+      "name": "Neo60 Cu / Core",
+      "label": "Neo60 Cu / Core · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo60Cu_trimode.JSON?v=1737780787",
+      "sha256": "708aa36a1a0c28842fff45904758e33a3d875e542e8ec5d1f9dd9dfe88d422dd"
+    },
+    {
+      "key": "79a72e5278cf",
+      "name": "Neo65 Core Plus",
+      "label": "Neo65 Core Plus · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo65_Core_Plus_wired.json?v=1784273569",
+      "sha256": "79a72e5278cf8ca31140d433ba9e64c58df9d5b6338fcb7222a733f9f47bcae1"
+    },
+    {
+      "key": "d3f2c513f555",
+      "name": "Neo65 Core Plus",
+      "label": "Neo65 Core Plus · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo65_Core_Plus.JSON?v=1784100712",
+      "sha256": "d3f2c513f55584ee8c2c30ad41677223483a637a1d0f8aecd9e7eec6925f9c92"
+    },
+    {
+      "key": "45e84446115c",
+      "name": "Neo80 Cu",
+      "label": "Neo80 Cu · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo80_Cu_solder.json?v=1757663081",
+      "sha256": "45e84446115c960d5a11c6f33d208356d0d1b3036e47b50f8303140db31b65f3"
+    },
+    {
+      "key": "b8680a009dd8",
+      "name": "Neo80 Cu",
+      "label": "Neo80 Cu · 有线 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo80_Cu_wierd_ansi.json?v=1757662952",
+      "sha256": "b8680a009dd8d92fedc38116b7ef6c4c5ab2cb293dc713e4c02e99b5f6f5114a"
+    },
+    {
+      "key": "aa3444cb1441",
+      "name": "Neo80 Cu",
+      "label": "Neo80 Cu · 三模 ISO",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo80_Cu_tri-mode_iso.JSON?v=1757663081",
+      "sha256": "aa3444cb1441494b646d5700959289514c6e36f8acacd8c1777add8f6939dbcb"
+    },
+    {
+      "key": "3b47037834e2",
+      "name": "Neo80 Cu",
+      "label": "Neo80 Cu · 三模 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/Neo80_Cu_ansi.JSON?v=1763623928",
+      "sha256": "3b47037834e2282fd49dd504ae29958b049222b8a9762350a3b0f2ed1273013e"
+    },
+    {
+      "key": "93db897b8e27",
+      "name": "QK65 V2 Classic",
+      "label": "QK65 V2 Classic · 三模",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/65kc_via_v1_00_20240221.json?v=1710143882",
+      "sha256": "93db897b8e27c1256fef0fc516ec7acb72ac37c2d5834ea47ba1b7cfcac3758a"
+    },
+    {
+      "key": "dc519a275d4a",
+      "name": "QK100",
+      "label": "QK100 · 有线 ANSI",
+      "format": 2,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk100_ansi_43e766ad-3b4f-4b9f-8ce0-8cd8396e2d75.json?v=1725446050",
+      "sha256": "dc519a275d4ab49c8cf74471e05408fcf774d95d62c4d4302b316d7461334d9d"
+    },
+    {
+      "key": "cfd46f4332eb",
+      "name": "QK100",
+      "label": "QK100 · 有线 ANSI",
+      "format": 3,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk100_ansi_v3_7a2b395c-04c8-499e-81f5-6385d92a8795.json?v=1725444056",
+      "sha256": "cfd46f4332ebd216d2a148de0b9b95a8c7754f282cec353c83fa8b6ca971fcc6"
+    },
+    {
+      "key": "88ed18ad8ae0",
+      "name": "QK100",
+      "label": "QK100 · 焊接",
+      "format": 2,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk100_solder_6288075f-2737-4d85-9935-33a8780fad26.json?v=1725446049",
+      "sha256": "88ed18ad8ae0d626d299652d6064cb4cb3d986147bc69008414e24571e1fa5e4"
+    },
+    {
+      "key": "f5723fc79d10",
+      "name": "QK100",
+      "label": "QK100 · 焊接",
+      "format": 3,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk100_solder_v3_1b64826c-95ba-4ae1-815f-2f4e42d010fe.json?v=1725444056",
+      "sha256": "f5723fc79d10e0ea6f9a643163f8fc9aad13c99d4cbe904126b929c8c339c1fd"
+    },
+    {
+      "key": "7ce2d14783fd",
+      "name": "QK60",
+      "label": "QK60 · 有线",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk60.json",
+      "sha256": "7ce2d14783fda6a19c348ba45722a3bab6af0b54792a659d8cd95c961b4358ab"
+    },
+    {
+      "key": "0e0de748130c",
+      "name": "QK65",
+      "label": "QK65 · 有线 ISO",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/QK65_ISO.json?v=1684417626",
+      "sha256": "0e0de748130cfca6d881303fb16350c6572c39b7d31531fc54b91112c12ac068"
+    },
+    {
+      "key": "c9b0a0e36c74",
+      "name": "QK75",
+      "label": "QK75 · 有线 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk75_ansi_v3.json?v=1732095513",
+      "sha256": "c9b0a0e36c7482fe65c532622f7387cd394aaf97ef5c1bd0ee762e22b4df13e2"
+    },
+    {
+      "key": "731bac56d836",
+      "name": "QK75",
+      "label": "QK75 · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk75_solder_v3.json?v=1732095516",
+      "sha256": "731bac56d836d571ef0bebb4f13bbd4f490f289cf8bffaf9adeef0ef5046b1da"
+    },
+    {
+      "key": "611e7843f036",
+      "name": "QK80",
+      "label": "QK80 · 有线 ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk80_ansi.json?v=1682263139",
+      "sha256": "611e7843f0367dbfe5c7427d974bef2ae9029f14b4cfbd87872a57af12976d9b"
+    },
+    {
+      "key": "3f3fe1d95463",
+      "name": "QK80",
+      "label": "QK80 · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/qk80_solder.json?v=1682263139",
+      "sha256": "3f3fe1d95463029b424748a2661c2065a1a18a00bf8c455f76816ba56845ced9"
+    },
+    {
+      "key": "f1125475e3d7",
+      "name": "Cub65",
+      "label": "Cub65 · ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/cub65_ansi.json?v=1682263125",
+      "sha256": "f1125475e3d7116afbdc97d1b8587d067dbba4273b6f6e7d6a87e46eaaa27bef"
+    },
+    {
+      "key": "1fe90e585627",
+      "name": "Cub65",
+      "label": "Cub65 · ISO",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/cub65_iso.json?v=1682263125",
+      "sha256": "1fe90e5856272098c7acab1c05bf2d753295028ab5dde2d09ad5ec705b24a371"
+    },
+    {
+      "key": "713aa0f98668",
+      "name": "Vento80",
+      "label": "Vento80 · 6.25U",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/vento80_625u.json?v=1709265393",
+      "sha256": "713aa0f98668c58c175719a48a40c28b9bd5c1764cebf1072d21fad9b09374fa"
+    },
+    {
+      "key": "c119f6ed4924",
+      "name": "Vento80",
+      "label": "Vento80 · 7U",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/vento80_7u.json?v=1709265393",
+      "sha256": "c119f6ed492465e6b6a337a5405d7c25806ec09b27ae4d1b2c61ab8f232ea6eb"
+    },
+    {
+      "key": "59adfc2d014b",
+      "name": "Vento80",
+      "label": "Vento80 · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/vento80_solder.json?v=1709265393",
+      "sha256": "59adfc2d014b7b28a5c80da11165d2e18c722dc75e1d6d551dc2947d378b999a"
+    },
+    {
+      "key": "e13c94330a28",
+      "name": "Jelly Evolv",
+      "label": "Jelly Evolv · 热插拔 6.25U",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/jelly_evolv_hotswap_625U.json",
+      "sha256": "e13c94330a28b0adb28e7485966b3ab4304023e858dfd3d268cfa91918772029"
+    },
+    {
+      "key": "f104503ad90c",
+      "name": "Jelly Evolv",
+      "label": "Jelly Evolv · 热插拔 7U",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/jelly_evolv_hotswap_7U.json",
+      "sha256": "f104503ad90c663e5342f4ff8e6a13b98329032f5684c39560589603e1521d55"
+    },
+    {
+      "key": "8d3c57365395",
+      "name": "Jelly Epoch",
+      "label": "Jelly Epoch · 热插拔",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/viainfo_jelly_hotswap.JSON?v=1682340008",
+      "sha256": "8d3c57365395d138eb719919523b9c26efb5a857e137d6c9e8697c58f16f6073"
+    },
+    {
+      "key": "fabc66dde9af",
+      "name": "Jelly Epoch",
+      "label": "Jelly Epoch · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/viainfo_jelly_solder_fixed.JSON?v=1682340008",
+      "sha256": "fabc66dde9aff047550cb09c1e6289213f48861855b8065c99558fddfa3ae626"
+    },
+    {
+      "key": "3910295b647d",
+      "name": "Mr. Suit",
+      "label": "Mr. Suit · ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/suit80_ansi.json?v=1729665948",
+      "sha256": "3910295b647d0f959231e399972fce42f9db5d963ed4177c64bf543fe91a495c"
+    },
+    {
+      "key": "1c6f16b754df",
+      "name": "Spring",
+      "label": "Spring",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/spring.json?v=1682343966",
+      "sha256": "1c6f16b754df2b236e69068868315137679d87a6da4aa7ae1fca43992b35e40b"
+    },
+    {
+      "key": "96e984bffa09",
+      "name": "Link65",
+      "label": "Link65 · 热插拔",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/link65_hotswap_v3.json",
+      "sha256": "96e984bffa095adf65d893a66ba2ea8877e62c134975e69e87d97b85c70ddd65"
+    },
+    {
+      "key": "feb57f9a404f",
+      "name": "Link65",
+      "label": "Link65 · 焊接",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/LINK_solder.json",
+      "sha256": "feb57f9a404f1e39c93dc12d95db2113c0db88fb6417181be9ef874a191c46cd"
+    },
+    {
+      "key": "b1c513667eb5",
+      "name": "Chalice",
+      "label": "Chalice · 热插拔",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/chalice_hotswap.json?v=1764038383",
+      "sha256": "b1c513667eb540e51e0c3d31a20b8539299e076025488fb2abbfb7853da91b48"
+    },
+    {
+      "key": "1334c1856d20",
+      "name": "Volt R2",
+      "label": "Volt R2",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/volt_r2_VIA.json?v=1726037102",
+      "sha256": "1334c1856d20157d6f21fff6ac6673b9f3fd2252a93aebe7687481209d8dc432"
+    },
+    {
+      "key": "6ac1eed11437",
+      "name": "VoltPad",
+      "label": "VoltPad",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/volt_pad_VIA.json?v=1735616216",
+      "sha256": "6ac1eed114371c52629c2701f85b44c994d6cfed54e849858c8ceb31e71dfefc"
+    },
+    {
+      "key": "c89dc50ecafe",
+      "name": "PT75",
+      "label": "PT75",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/pt75.json?v=1737705850",
+      "sha256": "c89dc50ecafe01b609f963d095dbd6d8e19aeb8c0a2aa569cdfea3be30ae4325"
+    },
+    {
+      "key": "bdbfcdc25664",
+      "name": "Redux60 RGB ANSI",
+      "label": "Redux60 RGB · ANSI",
+      "format": 0,
+      "sourcePage": "https://ydkb.github.io/help/#/other-firmware/vial",
+      "url": "https://raw.githubusercontent.com/ydkb/ydkb.github.io/e4a225089f2d0e649278f8eeee5c3707aabcaa95/help/other-firmware/vial/ydkb_kbdfans_redux60rgb_ansi_via.json",
+      "sha256": "bdbfcdc256640a1f709e7329440fa7e6d118b5deb75c776b979ab6649eb52340"
+    },
+    {
+      "key": "f7b852e48a2e",
+      "name": "TOFU60 3.0",
+      "label": "TOFU60 3.0 · 有线",
+      "format": 0,
+      "sourcePage": "https://ydkb.github.io/help/#/other-firmware/vial",
+      "url": "https://raw.githubusercontent.com/ydkb/ydkb.github.io/e4a225089f2d0e649278f8eeee5c3707aabcaa95/help/other-firmware/vial/ydkb_kbdfans_tofu60_3_0_via.json",
+      "sha256": "f7b852e48a2e6389284022415083a7e73398fa7ba539cef08aa2d72fb1b40150"
+    },
+    {
+      "key": "15461eaee99b",
+      "name": "TOFU65 3.0",
+      "label": "TOFU65 3.0 · 有线",
+      "format": 0,
+      "sourcePage": "https://ydkb.github.io/help/#/other-firmware/vial",
+      "url": "https://raw.githubusercontent.com/ydkb/ydkb.github.io/e4a225089f2d0e649278f8eeee5c3707aabcaa95/help/other-firmware/vial/ydkb_kbdfans_tofu65_3_0_via.json",
+      "sha256": "15461eaee99b14c8d21c11c8e8a1d432671075f031fd63110c52dfa28f8ae191"
+    },
+    {
+      "key": "1a6bc83de493",
+      "name": "TOFU PAD",
+      "label": "TOFU PAD · 有线",
+      "format": 0,
+      "sourcePage": "https://ydkb.github.io/help/#/other-firmware/vial",
+      "url": "https://raw.githubusercontent.com/ydkb/ydkb.github.io/e4a225089f2d0e649278f8eeee5c3707aabcaa95/help/other-firmware/vial/ydkb_kbdfans_tofu_pad_via.json",
+      "sha256": "1a6bc83de49340636287985567f93ad3ca659e022c54ce1ec430ccb54ca0ab5f"
+    },
+    {
+      "key": "26a69842b29b",
+      "name": "TOFU TKL",
+      "label": "TOFU TKL · 有线",
+      "format": 0,
+      "sourcePage": "https://ydkb.github.io/help/#/other-firmware/vial",
+      "url": "https://raw.githubusercontent.com/ydkb/ydkb.github.io/e4a225089f2d0e649278f8eeee5c3707aabcaa95/help/other-firmware/vial/ydkb_kbdfans_tofu_tkl_3_0_via.json",
+      "sha256": "26a69842b29bd75994ed0e6bd032def9003a11098eed47be730f87295ca8b9b0"
+    },
+    {
+      "key": "c47a99916941",
+      "name": "TOFU-FA",
+      "label": "TOFU-FA · 有线",
+      "format": 0,
+      "sourcePage": "https://ydkb.github.io/help/#/other-firmware/vial",
+      "url": "https://raw.githubusercontent.com/ydkb/ydkb.github.io/e4a225089f2d0e649278f8eeee5c3707aabcaa95/help/other-firmware/vial/ydkb_kbdfans_tofufa_via.json",
+      "sha256": "c47a9991694157decc7ac3f2a9a8948fd958b61013bf991ef8bf4446cad6d40e"
+    },
+    {
+      "key": "87ab3f2bb759",
+      "name": "TOFU65 2.0 / Jr",
+      "label": "TOFU65 2.0 / Jr · 单键 RGB",
+      "format": 0,
+      "sourcePage": "https://kbdfans.com/products/tofu65-2-0-pcb",
+      "url": "https://drive.google.com/uc?export=download&id=1b_OJoFY5jVBwADN6-i7QiS_3fvXRS6Au",
+      "sha256": "87ab3f2bb7596bc7fec02c0e11455f83b15cbdf6e7ac9e62165b9b4329f7861e"
+    },
+    {
+      "key": "6056b88c8c31",
+      "name": "TOFU65 2.0",
+      "label": "TOFU65 2.0 · 底灯",
+      "format": 0,
+      "sourcePage": "https://kbdfans.com/products/tofu65-2-0-pcb",
+      "url": "https://drive.google.com/uc?export=download&id=1SJX6wGZgqvgqPdUqh9kHVUC0ZwhWVjJM",
+      "sha256": "6056b88c8c31817873cd9cd48515c8f9a8437d49decaf7015c8f5c5410f5af64"
+    },
+    {
+      "key": "99c4e7369075",
+      "name": "EVO75",
+      "label": "EVO75 · ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/EVO75.JSON",
+      "sha256": "99c4e73690750e12e39c69b901f2ab68d746b442a011e45a3157dd31f71a9720"
+    },
+    {
+      "key": "a97d6669147f",
+      "name": "EVO80",
+      "label": "EVO80 · ANSI",
+      "format": 0,
+      "sourcePage": "https://www.qwertykeys.com/pages/fw",
+      "url": "https://cdn.shopify.com/s/files/1/0508/8716/4061/files/EVO80_0924.JSON",
+      "sha256": "a97d6669147fd9a3a68d20a0e8245ac34e3103ae1e31e9023c34f8fe87f7b2c0"
+    }
+  ]
+}
